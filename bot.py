@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import discord
-from discord.ext import commands, tasks
+from discord.ext import tasks
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -16,24 +16,51 @@ EVENT_PING_ROLE_ID = 1533879468681330698
 
 PARIS = ZoneInfo("Europe/Paris")
 
-DUREE_EVENT = 20
 ANNONCE_AVANT = 10
+DUREE_EVENT = 20
+DUREE_CHILL = 60
 
-HORAIRES_EVENTS = {
-    "SUMMER": ["02:00", "08:00", "14:00", "20:00"],
-    "MAGICAL": ["02:30", "08:30", "14:30", "20:30"],
-    "VOID": ["07:00", "15:00", "23:00"],
-    "JUNGLE": ["04:00", "10:00", "16:00", "22:00"],
-    "TOKYO": ["17:00"],
-    "AQUA": ["17:30"],
-    "GOTHIC": ["19:00"],
-    "HEAVEN": ["21:00", "23:30"]
-}
+
+HORAIRES_EVENTS = [
+    ("GOTHIC", "02:00", DUREE_EVENT),
+    ("SUMMER", "02:00", DUREE_EVENT),
+    ("GOTHIC", "02:30", DUREE_EVENT),
+    ("RAVE", "03:30", DUREE_EVENT),
+    ("JUNGLE", "04:00", DUREE_EVENT),
+    ("TOKYO", "05:00", DUREE_EVENT),
+    ("UNDERWATER", "05:30", DUREE_EVENT),
+    ("CHILL HOUR", "05:30", DUREE_CHILL),
+    ("ADMIN MACHINE", "06:30", DUREE_EVENT),
+    ("GOTHIC", "07:00", DUREE_EVENT),
+    ("SUMMER", "08:00", DUREE_EVENT),
+    ("RAVE", "09:30", DUREE_EVENT),
+    ("JUNGLE", "10:00", DUREE_EVENT),
+    ("TOKYO", "11:00", DUREE_EVENT),
+    ("UNDERWATER", "11:30", DUREE_EVENT),
+    ("CHILL HOUR", "11:30", DUREE_CHILL),
+    ("JUNGLE", "13:00", DUREE_EVENT),
+    ("CRYSTAL", "14:00", DUREE_EVENT),
+    ("GOTHIC", "14:30", DUREE_EVENT),
+    ("JUNGLE", "16:00", DUREE_EVENT),
+    ("CHILL HOUR", "16:30", DUREE_CHILL),
+    ("UNDERWATER", "17:00", DUREE_EVENT),
+    ("HEAVEN", "17:30", DUREE_EVENT),
+    ("ADMIN MACHINE", "18:30", DUREE_EVENT),
+    ("GOTHIC", "19:00", DUREE_EVENT),
+    ("SUMMER", "20:00", DUREE_EVENT),
+    ("MAGICAL", "20:30", DUREE_EVENT),
+    ("HEAVEN", "21:00", DUREE_EVENT),
+    ("JUNGLE", "22:00", DUREE_EVENT),
+    ("VOID", "23:00", DUREE_EVENT),
+    ("HEAVEN", "23:30", DUREE_EVENT),
+    ("CHILL HOUR", "23:30", DUREE_CHILL),
+    ("ADMIN MACHINE", "00:30", DUREE_EVENT),
+]
+
 
 intents = discord.Intents.default()
 
-bot = commands.Bot(
-    command_prefix="!",
+bot = discord.Client(
     intents=intents
 )
 
@@ -41,7 +68,10 @@ annonces_envoyees = set()
 
 
 def creer_datetime(date_base, heure):
-    heures, minutes = map(int, heure.split(":"))
+    heures, minutes = map(
+        int,
+        heure.split(":")
+    )
 
     return datetime(
         date_base.year,
@@ -61,41 +91,46 @@ def obtenir_occurrences():
     occurrences = []
 
     for jour_offset in range(3):
-
         jour = maintenant + timedelta(
             days=jour_offset
         )
 
-        for nom_event, horaires in HORAIRES_EVENTS.items():
+        for index, (nom, heure, duree) in enumerate(
+            HORAIRES_EVENTS
+        ):
 
-            for heure in horaires:
+            debut = creer_datetime(
+                jour,
+                heure
+            )
 
-                debut = creer_datetime(
-                    jour,
-                    heure
-                )
+            fin = debut + timedelta(
+                minutes=duree
+            )
 
-                fin = debut + timedelta(
-                    minutes=DUREE_EVENT
-                )
+            if fin > maintenant:
 
-                if fin > maintenant:
-
-                    occurrences.append({
-                        "nom": nom_event,
-                        "heure": heure,
-                        "debut": debut,
-                        "fin": fin
-                    })
+                occurrences.append({
+                    "index": index,
+                    "nom": nom,
+                    "heure": heure,
+                    "duree": duree,
+                    "debut": debut,
+                    "fin": fin
+                })
 
     occurrences.sort(
-        key=lambda event: event["debut"]
+        key=lambda event: (
+            event["debut"],
+            event["index"]
+        )
     )
 
     return occurrences
 
 
 def creer_embed(event):
+
     maintenant = datetime.now(PARIS)
 
     debut = event["debut"]
@@ -109,14 +144,20 @@ def creer_embed(event):
         fin.timestamp()
     )
 
-    en_cours = debut <= maintenant < fin
+    en_cours = (
+        debut <= maintenant < fin
+    )
+
+    if event["duree"] == DUREE_CHILL:
+        duree_texte = "Length: 1h 00m 00s"
+    else:
+        duree_texte = "Length: 20m 00s"
 
     embed = discord.Embed(
         colour=discord.Colour.red()
     )
 
     if bot.user:
-
         embed.set_author(
             name=bot.user.name,
             icon_url=bot.user.display_avatar.url
@@ -129,7 +170,7 @@ def creer_embed(event):
             f"<t:{timestamp_fin}:t> "
             f"(<t:{timestamp_fin}:R>)**\n\n"
             f"**{event['nom']}**\n\n"
-            f"Length: 20m 00s\n\n"
+            f"{duree_texte}\n\n"
             f"Ends <t:{timestamp_fin}:R>\n\n"
             f"**LIVE now**"
         )
@@ -140,14 +181,18 @@ def creer_embed(event):
             f"**<t:{timestamp_debut}:t> "
             f"(<t:{timestamp_debut}:R>)**\n\n"
             f"**{event['nom']}**\n\n"
-            f"Length: 20m 00s\n\n"
+            f"{duree_texte}\n\n"
             f"Starts <t:{timestamp_debut}:R>"
         )
 
     return embed
 
 
-async def envoyer_message(premier, deuxieme, raison):
+async def envoyer_message(
+    premier,
+    deuxieme,
+    raison
+):
 
     salon = bot.get_channel(
         EVENT_SALON_ID
@@ -172,7 +217,9 @@ async def envoyer_message(premier, deuxieme, raison):
     try:
 
         await salon.send(
-            content=f"<@&{EVENT_PING_ROLE_ID}>",
+            content=(
+                f"<@&{EVENT_PING_ROLE_ID}>"
+            ),
             embeds=[
                 creer_embed(premier),
                 creer_embed(deuxieme)
@@ -182,7 +229,9 @@ async def envoyer_message(premier, deuxieme, raison):
             )
         )
 
-        annonces_envoyees.add(cle)
+        annonces_envoyees.add(
+            cle
+        )
 
         print(
             f"✅ Message envoyé : "
@@ -217,6 +266,11 @@ async def verifier_evenements():
     premier = occurrences[0]
     deuxieme = occurrences[1]
 
+    cle = (
+        f"{premier['nom']}-"
+        f"{premier['debut'].strftime('%Y%m%d%H%M')}"
+    )
+
     moment_annonce = (
         premier["debut"]
         - timedelta(
@@ -224,12 +278,10 @@ async def verifier_evenements():
         )
     )
 
-    cle = (
-        f"{premier['nom']}-"
-        f"{premier['debut'].strftime('%Y%m%d%H%M')}"
-    )
+    # =========================================
+    # ANNONCE 10 MINUTES AVANT
+    # =========================================
 
-    # Annonce 10 minutes avant
     if (
         moment_annonce
         <= maintenant
@@ -246,8 +298,10 @@ async def verifier_evenements():
 
         return
 
-    # Si le bot redémarre pendant un event,
-    # il détecte qu'il est déjà en cours.
+    # =========================================
+    # SI LE BOT REDEMARRE PENDANT UN EVENT
+    # =========================================
+
     if (
         premier["debut"]
         <= maintenant
@@ -292,43 +346,11 @@ async def on_ready():
     )
 
     print(
-        "⏳ Durée : 20 minutes"
+        "⏳ Events normaux : 20 minutes"
     )
 
     print(
-        "📦 2 embeds par message"
-    )
-
-    print(
-        "🌴 JUNGLE : 04:00 / 10:00 / 16:00 / 22:00"
-    )
-
-    print(
-        "☀️ SUMMER : 02:00 / 08:00 / 14:00 / 20:00"
-    )
-
-    print(
-        "✨ MAGICAL : 02:30 / 08:30 / 14:30 / 20:30"
-    )
-
-    print(
-        "🌌 VOID : 07:00 / 15:00 / 23:00"
-    )
-
-    print(
-        "🗼 TOKYO : 17:00"
-    )
-
-    print(
-        "🌊 AQUA : 17:30"
-    )
-
-    print(
-        "🖤 GOTHIC : 19:00"
-    )
-
-    print(
-        "☁️ HEAVEN : 21:00 / 23:30"
+        "🕐 Chill Hour : 1 heure"
     )
 
     print(
