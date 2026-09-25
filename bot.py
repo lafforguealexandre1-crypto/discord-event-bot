@@ -12,11 +12,9 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 
 GUILD_ID = 1519087155412992011
 EVENT_SALON_ID = 1543989597900513291
-EVENT_PING_ROLE_ID = 1533879468681330698
 
 PARIS = ZoneInfo("Europe/Paris")
 
-ANNONCE_AVANT = 10
 DUREE_EVENT = 20
 DUREE_CHILL = 60
 
@@ -98,7 +96,6 @@ def obtenir_occurrences():
         for index, (nom, heure, duree) in enumerate(
             HORAIRES_EVENTS
         ):
-
             debut = creer_datetime(
                 jour,
                 heure
@@ -108,16 +105,14 @@ def obtenir_occurrences():
                 minutes=duree
             )
 
-            if fin > maintenant:
-
-                occurrences.append({
-                    "index": index,
-                    "nom": nom,
-                    "heure": heure,
-                    "duree": duree,
-                    "debut": debut,
-                    "fin": fin
-                })
+            occurrences.append({
+                "index": index,
+                "nom": nom,
+                "heure": heure,
+                "duree": duree,
+                "debut": debut,
+                "fin": fin
+            })
 
     occurrences.sort(
         key=lambda event: (
@@ -130,7 +125,6 @@ def obtenir_occurrences():
 
 
 def creer_embed(event):
-
     maintenant = datetime.now(PARIS)
 
     debut = event["debut"]
@@ -164,7 +158,6 @@ def creer_embed(event):
         )
 
     if en_cours:
-
         embed.description = (
             f"**<t:{timestamp_debut}:t> → "
             f"<t:{timestamp_fin}:t> "
@@ -174,9 +167,7 @@ def creer_embed(event):
             f"Ends <t:{timestamp_fin}:R>\n\n"
             f"**LIVE now**"
         )
-
     else:
-
         embed.description = (
             f"**<t:{timestamp_debut}:t> "
             f"(<t:{timestamp_debut}:R>)**\n\n"
@@ -188,22 +179,15 @@ def creer_embed(event):
     return embed
 
 
-async def envoyer_message(
-    premier,
-    deuxieme,
-    raison
-):
-
+async def envoyer_message(premier, deuxieme, raison):
     salon = bot.get_channel(
         EVENT_SALON_ID
     )
 
     if salon is None:
-
         print(
             f"❌ Salon introuvable : {EVENT_SALON_ID}"
         )
-
         return
 
     cle = (
@@ -215,23 +199,18 @@ async def envoyer_message(
         return
 
     try:
-
         await salon.send(
-            content=(
-                f"<@&{EVENT_PING_ROLE_ID}>"
-            ),
+            content="@here",
             embeds=[
                 creer_embed(premier),
                 creer_embed(deuxieme)
             ],
             allowed_mentions=discord.AllowedMentions(
-                roles=True
+                everyone=True
             )
         )
 
-        annonces_envoyees.add(
-            cle
-        )
+        annonces_envoyees.add(cle)
 
         print(
             f"✅ Message envoyé : "
@@ -240,14 +219,12 @@ async def envoyer_message(
         )
 
     except discord.Forbidden:
-
         print(
             "❌ Le bot n'a pas la permission "
             "d'envoyer dans ce salon."
         )
 
     except Exception as erreur:
-
         print(
             f"❌ Erreur d'envoi : {erreur}"
         )
@@ -255,71 +232,55 @@ async def envoyer_message(
 
 @tasks.loop(seconds=5)
 async def verifier_evenements():
-
     maintenant = datetime.now(PARIS)
 
     occurrences = obtenir_occurrences()
 
-    if len(occurrences) < 2:
+    events_futurs = [
+        event
+        for event in occurrences
+        if event["debut"] > maintenant
+    ]
+
+    if len(events_futurs) < 2:
         return
 
-    premier = occurrences[0]
-    deuxieme = occurrences[1]
+    premier = events_futurs[0]
+    deuxieme = events_futurs[1]
 
-    cle = (
-        f"{premier['nom']}-"
-        f"{premier['debut'].strftime('%Y%m%d%H%M')}"
-    )
+    events_termines = [
+        event
+        for event in occurrences
+        if event["fin"] <= maintenant
+    ]
 
-    moment_annonce = (
-        premier["debut"]
-        - timedelta(
-            minutes=ANNONCE_AVANT
-        )
-    )
-
-    # =========================================
-    # ANNONCE 10 MINUTES AVANT
-    # =========================================
-
-    if (
-        moment_annonce
-        <= maintenant
-        < premier["debut"]
-    ):
-
-        if cle not in annonces_envoyees:
-
-            await envoyer_message(
-                premier,
-                deuxieme,
-                "10 minutes avant"
-            )
-
+    if not events_termines:
         return
 
-    # =========================================
-    # SI LE BOT REDEMARRE PENDANT UN EVENT
-    # =========================================
+    dernier_termine = events_termines[-1]
 
-    if (
-        premier["debut"]
-        <= maintenant
-        < premier["fin"]
-    ):
+    cle_declencheur = (
+        f"FIN-"
+        f"{dernier_termine['nom']}-"
+        f"{dernier_termine['debut'].strftime('%Y%m%d%H%M')}"
+    )
 
-        if cle not in annonces_envoyees:
+    if cle_declencheur in annonces_envoyees:
+        return
 
-            await envoyer_message(
-                premier,
-                deuxieme,
-                "event déjà en direct"
-            )
+    await envoyer_message(
+        premier,
+        deuxieme,
+        f"{dernier_termine['nom']} terminé"
+    )
+
+    annonces_envoyees.add(
+        cle_declencheur
+    )
 
 
 @bot.event
 async def on_ready():
-
     print(
         "======================================"
     )
@@ -338,11 +299,11 @@ async def on_ready():
     )
 
     print(
-        f"🔔 Ping Event : {EVENT_PING_ROLE_ID}"
+        "🔔 Ping : @here"
     )
 
     print(
-        "📢 Annonce : 10 minutes avant"
+        "📢 Annonce : dès qu'un event est terminé"
     )
 
     print(
@@ -362,19 +323,15 @@ async def on_ready():
     )
 
     if salon:
-
         print(
             f"✅ Salon trouvé : #{salon.name}"
         )
-
     else:
-
         print(
             "❌ Salon introuvable"
         )
 
     if not verifier_evenements.is_running():
-
         verifier_evenements.start()
 
         print(
@@ -383,13 +340,10 @@ async def on_ready():
 
 
 if not TOKEN:
-
     print(
         "❌ DISCORD_TOKEN manquant."
     )
-
 else:
-
     print(
         "🚀 Démarrage du bot..."
     )
