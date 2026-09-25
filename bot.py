@@ -20,13 +20,12 @@ DUREE_EVENT = 20
 ANNONCE_AVANT = 10
 
 HORAIRES_EVENTS = {
-    "SUMMER": ["14:00", "20:00"],
-    "MAGICAL": ["14:30", "20:30"],
-    "VOID": ["15:00", "23:00"],
-    "JUNGLE": ["16:00", "22:00"],
+    "SUMMER": ["02:00", "08:00", "14:00", "20:00"],
+    "MAGICAL": ["02:30", "08:30", "14:30", "20:30"],
+    "VOID": ["07:00", "15:00", "23:00"],
+    "JUNGLE": ["04:00", "10:00", "16:00", "22:00"],
     "TOKYO": ["17:00"],
     "AQUA": ["17:30"],
-    "ADMIN MACHINE": ["18:30", "00:30"],
     "GOTHIC": ["19:00"],
     "HEAVEN": ["21:00", "23:30"]
 }
@@ -63,14 +62,22 @@ def obtenir_occurrences():
 
     for jour_offset in range(3):
 
-        jour = maintenant + timedelta(days=jour_offset)
+        jour = maintenant + timedelta(
+            days=jour_offset
+        )
 
         for nom_event, horaires in HORAIRES_EVENTS.items():
 
             for heure in horaires:
 
-                debut = creer_datetime(jour, heure)
-                fin = debut + timedelta(minutes=DUREE_EVENT)
+                debut = creer_datetime(
+                    jour,
+                    heure
+                )
+
+                fin = debut + timedelta(
+                    minutes=DUREE_EVENT
+                )
 
                 if fin > maintenant:
 
@@ -94,8 +101,13 @@ def creer_embed(event):
     debut = event["debut"]
     fin = event["fin"]
 
-    timestamp_debut = int(debut.timestamp())
-    timestamp_fin = int(fin.timestamp())
+    timestamp_debut = int(
+        debut.timestamp()
+    )
+
+    timestamp_fin = int(
+        fin.timestamp()
+    )
 
     en_cours = debut <= maintenant < fin
 
@@ -104,6 +116,7 @@ def creer_embed(event):
     )
 
     if bot.user:
+
         embed.set_author(
             name=bot.user.name,
             icon_url=bot.user.display_avatar.url
@@ -134,14 +147,18 @@ def creer_embed(event):
     return embed
 
 
-async def envoyer_paire(premier, deuxieme, raison):
+async def envoyer_message(premier, deuxieme, raison):
 
-    salon = bot.get_channel(EVENT_SALON_ID)
+    salon = bot.get_channel(
+        EVENT_SALON_ID
+    )
 
     if salon is None:
+
         print(
             f"❌ Salon introuvable : {EVENT_SALON_ID}"
         )
+
         return
 
     cle = (
@@ -168,7 +185,8 @@ async def envoyer_paire(premier, deuxieme, raison):
         annonces_envoyees.add(cle)
 
         print(
-            f"✅ {premier['nom']} → "
+            f"✅ Message envoyé : "
+            f"{premier['nom']} → "
             f"{deuxieme['nom']} | {raison}"
         )
 
@@ -182,11 +200,12 @@ async def envoyer_paire(premier, deuxieme, raison):
     except Exception as erreur:
 
         print(
-            f"❌ Erreur : {erreur}"
+            f"❌ Erreur d'envoi : {erreur}"
         )
 
 
-async def verifier_events():
+@tasks.loop(seconds=5)
+async def verifier_evenements():
 
     maintenant = datetime.now(PARIS)
 
@@ -198,37 +217,37 @@ async def verifier_events():
     premier = occurrences[0]
     deuxieme = occurrences[1]
 
+    moment_annonce = (
+        premier["debut"]
+        - timedelta(
+            minutes=ANNONCE_AVANT
+        )
+    )
+
     cle = (
         f"{premier['nom']}-"
         f"{premier['debut'].strftime('%Y%m%d%H%M')}"
     )
 
-    # =========================================
-    # 1. ANNONCE 10 MINUTES AVANT
-    # =========================================
-
-    moment_annonce = (
-        premier["debut"]
-        - timedelta(minutes=ANNONCE_AVANT)
-    )
-
+    # Annonce 10 minutes avant
     if (
-        moment_annonce <= maintenant
+        moment_annonce
+        <= maintenant
         < premier["debut"]
     ):
 
-        await envoyer_paire(
-            premier,
-            deuxieme,
-            "10 minutes avant"
-        )
+        if cle not in annonces_envoyees:
+
+            await envoyer_message(
+                premier,
+                deuxieme,
+                "10 minutes avant"
+            )
 
         return
 
-    # =========================================
-    # 2. SI L'EVENT EST ACTUELLEMENT LIVE
-    # =========================================
-
+    # Si le bot redémarre pendant un event,
+    # il détecte qu'il est déjà en cours.
     if (
         premier["debut"]
         <= maintenant
@@ -237,33 +256,11 @@ async def verifier_events():
 
         if cle not in annonces_envoyees:
 
-            await envoyer_paire(
+            await envoyer_message(
                 premier,
                 deuxieme,
-                "event déjà LIVE"
+                "event déjà en direct"
             )
-
-        return
-
-    # =========================================
-    # 3. SI LE PREMIER EVENT EST TERMINE
-    # =========================================
-
-    if maintenant >= premier["fin"]:
-
-        if cle not in annonces_envoyees:
-
-            await envoyer_paire(
-                premier,
-                deuxieme,
-                "event précédent terminé"
-            )
-
-
-@tasks.loop(seconds=5)
-async def boucle_events():
-
-    await verifier_events()
 
 
 @bot.event
@@ -287,7 +284,7 @@ async def on_ready():
     )
 
     print(
-        f"🔔 Event Ping : {EVENT_PING_ROLE_ID}"
+        f"🔔 Ping Event : {EVENT_PING_ROLE_ID}"
     )
 
     print(
@@ -295,15 +292,43 @@ async def on_ready():
     )
 
     print(
+        "⏳ Durée : 20 minutes"
+    )
+
+    print(
         "📦 2 embeds par message"
     )
 
     print(
-        "🔄 Nouveau message après chaque event"
+        "🌴 JUNGLE : 04:00 / 10:00 / 16:00 / 22:00"
     )
 
     print(
-        "🌴 JUNGLE : 16:00 / 22:00"
+        "☀️ SUMMER : 02:00 / 08:00 / 14:00 / 20:00"
+    )
+
+    print(
+        "✨ MAGICAL : 02:30 / 08:30 / 14:30 / 20:30"
+    )
+
+    print(
+        "🌌 VOID : 07:00 / 15:00 / 23:00"
+    )
+
+    print(
+        "🗼 TOKYO : 17:00"
+    )
+
+    print(
+        "🌊 AQUA : 17:30"
+    )
+
+    print(
+        "🖤 GOTHIC : 19:00"
+    )
+
+    print(
+        "☁️ HEAVEN : 21:00 / 23:30"
     )
 
     print(
@@ -326,9 +351,9 @@ async def on_ready():
             "❌ Salon introuvable"
         )
 
-    if not boucle_events.is_running():
+    if not verifier_evenements.is_running():
 
-        boucle_events.start()
+        verifier_evenements.start()
 
         print(
             "✅ Système Events activé !"
@@ -338,7 +363,7 @@ async def on_ready():
 if not TOKEN:
 
     print(
-        "❌ DISCORD_TOKEN introuvable."
+        "❌ DISCORD_TOKEN manquant."
     )
 
 else:
