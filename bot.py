@@ -1,4 +1,3 @@
-```python
 import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -64,8 +63,7 @@ bot = discord.Client(
     intents=intents
 )
 
-events_deja_termines = set()
-dernier_cycle_fini = None
+dernier_evenement_annonce = None
 
 
 def creer_datetime(date_base, heure):
@@ -91,21 +89,44 @@ def obtenir_occurrences():
 
     occurrences = []
 
-    for jour_offset in range(3):
-        jour = maintenant + timedelta(
-            days=jour_offset
-        )
+    for jour_offset in range(4):
+        jour = (
+            maintenant
+            + timedelta(days=jour_offset)
+        ).date()
 
         for index, (nom, heure, duree) in enumerate(
             HORAIRES_EVENTS
         ):
+            date_event = jour
+
+            # IMPORTANT :
+            # L'event de 00:30 appartient au jour suivant
+            # par rapport au planning qui commence à 02:00.
+            if heure == "00:30":
+                date_event = (
+                    datetime(
+                        jour.year,
+                        jour.month,
+                        jour.day,
+                        tzinfo=PARIS
+                    )
+                    + timedelta(days=1)
+                ).date()
+
             debut = creer_datetime(
-                jour,
+                datetime(
+                    date_event.year,
+                    date_event.month,
+                    date_event.day,
+                    tzinfo=PARIS
+                ),
                 heure
             )
 
-            fin = debut + timedelta(
-                minutes=duree
+            fin = (
+                debut
+                + timedelta(minutes=duree)
             )
 
             occurrences.append({
@@ -225,8 +246,8 @@ async def envoyer_message(
     except discord.Forbidden:
         print(
             "❌ Le bot n'a pas la permission "
-            "de mentionner ce rôle ou d'envoyer "
-            "dans ce salon."
+            "de mentionner ce rôle ou "
+            "d'envoyer dans ce salon."
         )
 
     except Exception as erreur:
@@ -237,7 +258,7 @@ async def envoyer_message(
 
 @tasks.loop(seconds=5)
 async def verifier_evenements():
-    global dernier_cycle_fini
+    global dernier_evenement_annonce
 
     maintenant = datetime.now(PARIS)
 
@@ -252,9 +273,6 @@ async def verifier_evenements():
     if len(futurs) < 2:
         return
 
-    premier = futurs[0]
-    deuxieme = futurs[1]
-
     termines = [
         event
         for event in occurrences
@@ -264,33 +282,43 @@ async def verifier_evenements():
     if not termines:
         return
 
-    dernier_termine = termines[-1]
+    dernier_termine = max(
+        termines,
+        key=lambda event: (
+            event["fin"],
+            event["index"]
+        )
+    )
 
-    cle = creer_cle(
+    cle_dernier_termine = creer_cle(
         dernier_termine
     )
 
-    if cle not in events_deja_termines:
-        events_deja_termines.add(cle)
+    # Au premier lancement, on mémorise simplement
+    # le dernier event déjà terminé pour éviter
+    # une annonce inutile.
+    if dernier_evenement_annonce is None:
+        dernier_evenement_annonce = (
+            cle_dernier_termine
+        )
+        return
 
-        if dernier_cycle_fini is None:
-            dernier_cycle_fini = dernier_termine["fin"]
+    # Aucun nouvel event terminé.
+    if cle_dernier_termine == dernier_evenement_annonce:
+        return
 
-            print(
-                f"ℹ️ Initialisation après : "
-                f"{dernier_termine['nom']}"
-            )
+    dernier_evenement_annonce = (
+        cle_dernier_termine
+    )
 
-            return
+    premier = futurs[0]
+    deuxieme = futurs[1]
 
-        if dernier_termine["fin"] != dernier_cycle_fini:
-            dernier_cycle_fini = dernier_termine["fin"]
-
-            await envoyer_message(
-                premier,
-                deuxieme,
-                f"{dernier_termine['nom']} terminé"
-            )
+    await envoyer_message(
+        premier,
+        deuxieme,
+        f"{dernier_termine['nom']} terminé"
+    )
 
 
 @bot.event
@@ -326,6 +354,10 @@ async def on_ready():
 
     print(
         "🕐 Chill Hour : 1 heure"
+    )
+
+    print(
+        "🌙 Gestion de minuit : activée"
     )
 
     print(
@@ -366,4 +398,3 @@ else:
         TOKEN,
         reconnect=True
     )
-```
