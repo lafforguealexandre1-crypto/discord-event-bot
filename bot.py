@@ -1,4 +1,3 @@
-$code = @'
 import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -27,8 +26,8 @@ HORAIRES_EVENTS = {
     "JUNGLE": ["16:00", "22:00"],
     "TOKYO": ["17:00"],
     "AQUA": ["17:30"],
-    "GOTHIC": ["19:00"],
     "ADMIN MACHINE": ["18:30", "00:30"],
+    "GOTHIC": ["19:00"],
     "HEAVEN": ["21:00", "23:30"]
 }
 
@@ -39,18 +38,11 @@ bot = commands.Bot(
     intents=intents
 )
 
-messages_envoyes = {}
-
-
-def obtenir_salon():
-    return bot.get_channel(EVENT_SALON_ID)
+annonces_envoyees = set()
 
 
 def creer_datetime(date_base, heure):
-    heures, minutes = map(
-        int,
-        heure.split(":")
-    )
+    heures, minutes = map(int, heure.split(":"))
 
     return datetime(
         date_base.year,
@@ -71,22 +63,14 @@ def obtenir_occurrences():
 
     for jour_offset in range(3):
 
-        jour = maintenant + timedelta(
-            days=jour_offset
-        )
+        jour = maintenant + timedelta(days=jour_offset)
 
         for nom_event, horaires in HORAIRES_EVENTS.items():
 
             for heure in horaires:
 
-                debut = creer_datetime(
-                    jour,
-                    heure
-                )
-
-                fin = debut + timedelta(
-                    minutes=DUREE_EVENT
-                )
+                debut = creer_datetime(jour, heure)
+                fin = debut + timedelta(minutes=DUREE_EVENT)
 
                 if fin > maintenant:
 
@@ -105,30 +89,21 @@ def obtenir_occurrences():
 
 
 def creer_embed(event):
-
     maintenant = datetime.now(PARIS)
 
     debut = event["debut"]
     fin = event["fin"]
 
-    timestamp_debut = int(
-        debut.timestamp()
-    )
+    timestamp_debut = int(debut.timestamp())
+    timestamp_fin = int(fin.timestamp())
 
-    timestamp_fin = int(
-        fin.timestamp()
-    )
-
-    en_cours = (
-        debut <= maintenant < fin
-    )
+    en_cours = debut <= maintenant < fin
 
     embed = discord.Embed(
         colour=discord.Colour.red()
     )
 
     if bot.user:
-
         embed.set_author(
             name=bot.user.name,
             icon_url=bot.user.display_avatar.url
@@ -159,20 +134,14 @@ def creer_embed(event):
     return embed
 
 
-async def envoyer_message(
-    premier,
-    deuxieme,
-    raison
-):
+async def envoyer_paire(premier, deuxieme, raison):
 
-    salon = obtenir_salon()
+    salon = bot.get_channel(EVENT_SALON_ID)
 
     if salon is None:
-
         print(
             f"❌ Salon introuvable : {EVENT_SALON_ID}"
         )
-
         return
 
     cle = (
@@ -180,40 +149,26 @@ async def envoyer_message(
         f"{premier['debut'].strftime('%Y%m%d%H%M')}"
     )
 
-    if cle in messages_envoyes:
-
+    if cle in annonces_envoyees:
         return
-
-    embed1 = creer_embed(
-        premier
-    )
-
-    embed2 = creer_embed(
-        deuxieme
-    )
 
     try:
 
-        message = await salon.send(
+        await salon.send(
             content=f"<@&{EVENT_PING_ROLE_ID}>",
             embeds=[
-                embed1,
-                embed2
+                creer_embed(premier),
+                creer_embed(deuxieme)
             ],
             allowed_mentions=discord.AllowedMentions(
                 roles=True
             )
         )
 
-        messages_envoyes[cle] = {
-            "message": message,
-            "premier": premier,
-            "deuxieme": deuxieme
-        }
+        annonces_envoyees.add(cle)
 
         print(
-            f"✅ Message envoyé : "
-            f"{premier['nom']} → "
+            f"✅ {premier['nom']} → "
             f"{deuxieme['nom']} | {raison}"
         )
 
@@ -227,58 +182,17 @@ async def envoyer_message(
     except Exception as erreur:
 
         print(
-            f"❌ Erreur d'envoi : {erreur}"
+            f"❌ Erreur : {erreur}"
         )
 
 
-async def mettre_a_jour_messages():
-
-    maintenant = datetime.now(PARIS)
-
-    for cle, info in list(
-        messages_envoyes.items()
-    ):
-
-        premier = info["premier"]
-        deuxieme = info["deuxieme"]
-
-        embed1 = creer_embed(
-            premier
-        )
-
-        embed2 = creer_embed(
-            deuxieme
-        )
-
-        try:
-
-            await info["message"].edit(
-                embeds=[
-                    embed1,
-                    embed2
-                ]
-            )
-
-        except discord.NotFound:
-
-            messages_envoyes.pop(
-                cle,
-                None
-            )
-
-        except discord.HTTPException:
-
-            pass
-
-
-async def verifier_et_envoyer():
+async def verifier_events():
 
     maintenant = datetime.now(PARIS)
 
     occurrences = obtenir_occurrences()
 
     if len(occurrences) < 2:
-
         return
 
     premier = occurrences[0]
@@ -289,24 +203,21 @@ async def verifier_et_envoyer():
         f"{premier['debut'].strftime('%Y%m%d%H%M')}"
     )
 
-    # -----------------------------------------
-    # CAS 1 : prochain event dans 10 minutes
-    # -----------------------------------------
+    # =========================================
+    # 1. ANNONCE 10 MINUTES AVANT
+    # =========================================
 
     moment_annonce = (
         premier["debut"]
-        - timedelta(
-            minutes=ANNONCE_AVANT
-        )
+        - timedelta(minutes=ANNONCE_AVANT)
     )
 
     if (
-        moment_annonce
-        <= maintenant
+        moment_annonce <= maintenant
         < premier["debut"]
     ):
 
-        await envoyer_message(
+        await envoyer_paire(
             premier,
             deuxieme,
             "10 minutes avant"
@@ -314,9 +225,9 @@ async def verifier_et_envoyer():
 
         return
 
-    # -----------------------------------------
-    # CAS 2 : le premier event est actuellement LIVE
-    # -----------------------------------------
+    # =========================================
+    # 2. SI L'EVENT EST ACTUELLEMENT LIVE
+    # =========================================
 
     if (
         premier["debut"]
@@ -324,44 +235,35 @@ async def verifier_et_envoyer():
         < premier["fin"]
     ):
 
-        # Si le bot a redémarré pendant l'event
-        # et qu'aucun message n'existe encore,
-        # on envoie quand même la paire.
+        if cle not in annonces_envoyees:
 
-        if cle not in messages_envoyes:
-
-            await envoyer_message(
+            await envoyer_paire(
                 premier,
                 deuxieme,
-                "event actuellement LIVE"
+                "event déjà LIVE"
             )
 
         return
 
-    # -----------------------------------------
-    # CAS 3 : le premier event est terminé
-    # -----------------------------------------
-    #
-    # Dans ce cas, occurrences[0] est automatiquement
-    # le prochain event, et occurrences[1] celui d'après.
-    #
-    # On envoie immédiatement une nouvelle paire.
+    # =========================================
+    # 3. SI LE PREMIER EVENT EST TERMINE
+    # =========================================
 
     if maintenant >= premier["fin"]:
 
-        await envoyer_message(
-            premier,
-            deuxieme,
-            "event précédent terminé"
-        )
+        if cle not in annonces_envoyees:
+
+            await envoyer_paire(
+                premier,
+                deuxieme,
+                "event précédent terminé"
+            )
 
 
 @tasks.loop(seconds=5)
 async def boucle_events():
 
-    await verifier_et_envoyer()
-
-    await mettre_a_jour_messages()
+    await verifier_events()
 
 
 @bot.event
@@ -393,15 +295,11 @@ async def on_ready():
     )
 
     print(
-        "⏳ Durée : 20 minutes"
+        "📦 2 embeds par message"
     )
 
     print(
-        "📦 2 embeds dans le même message"
-    )
-
-    print(
-        "🔄 Nouveau message après chaque fin"
+        "🔄 Nouveau message après chaque event"
     )
 
     print(
@@ -412,7 +310,9 @@ async def on_ready():
         "======================================"
     )
 
-    salon = obtenir_salon()
+    salon = bot.get_channel(
+        EVENT_SALON_ID
+    )
 
     if salon:
 
@@ -423,7 +323,7 @@ async def on_ready():
     else:
 
         print(
-            "❌ Salon introuvable."
+            "❌ Salon introuvable"
         )
 
     if not boucle_events.is_running():
@@ -435,40 +335,19 @@ async def on_ready():
         )
 
 
-print(
-    "🚀 Démarrage du bot..."
-)
-
 if not TOKEN:
 
     print(
-        "❌ DISCORD_TOKEN introuvable dans .env"
+        "❌ DISCORD_TOKEN introuvable."
     )
 
 else:
+
+    print(
+        "🚀 Démarrage du bot..."
+    )
 
     bot.run(
         TOKEN,
         reconnect=True
     )
-'@
-
-Set-Content -Path "bot.py" -Value $code -Encoding UTF8
-
-Write-Host ""
-Write-Host "======================================"
-Write-Host "✅ BOT MIS A JOUR"
-Write-Host "📢 Salon : 1543989597900513291"
-Write-Host "📦 2 embeds par message"
-Write-Host "📢 Annonce 10 minutes avant"
-Write-Host "🔄 Nouveau message après chaque fin"
-Write-Host "⏳ Durée : 20 minutes"
-Write-Host "🌴 JUNGLE : 16:00 / 22:00"
-Write-Host "🔔 @Event Ping"
-Write-Host "🚫 Aucun lien Discord"
-Write-Host "======================================"
-Write-Host ""
-Write-Host "🚀 Lancement..."
-Write-Host ""
-
-python bot.py
