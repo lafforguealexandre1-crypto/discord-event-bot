@@ -1,154 +1,474 @@
+$code = @'
 import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import discord
 from discord.ext import commands, tasks
+from dotenv import load_dotenv
 
-# =========================
-# CONFIGURATION
-# =========================
+load_dotenv()
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-CHANNEL_ID = int(os.getenv("CHANNEL_ID", "0"))
 
-TIMEZONE = ZoneInfo("Europe/Paris")
+GUILD_ID = 1519087155412992011
+EVENT_SALON_ID = 1543989597900513291
+EVENT_PING_ROLE_ID = 1533879468681330698
 
-EVENTS = {
-    "🟣 Gothic": {"hour": 14, "minute": 30, "every": 6},
-    "☀️ Summer": {"hour": 16, "minute": 0, "every": 3},
-    "💧 Aqua": {"hour": 17, "minute": 0, "every": 9},
-    "🟢 Neon": {"hour": 14, "minute": 0, "every": 6},
-    "✨ Magical": {"hour": 17, "minute": 30, "every": 5},
-    "⚫ Void": {"hour": 23, "minute": 0, "every": 24},
+PARIS = ZoneInfo("Europe/Paris")
+
+DUREE_EVENT = 20
+ANNONCE_AVANT = 10
+
+HORAIRES_EVENTS = {
+    "SUMMER": ["14:00", "20:00"],
+    "MAGICAL": ["14:30", "20:30"],
+    "VOID": ["15:00", "23:00"],
+    "JUNGLE": ["16:00", "22:00"],
+    "TOKYO": ["17:00"],
+    "AQUA": ["17:30"],
+    "GOTHIC": ["19:00"],
+    "ADMIN MACHINE": ["18:30", "00:30"],
+    "HEAVEN": ["21:00", "23:30"]
 }
 
-DURATION = timedelta(minutes=20)
-
-# =========================
-# BOT
-# =========================
-
 intents = discord.Intents.default()
-bot = commands.Bot(command_prefix="!", intents=intents)
 
-message = None
+bot = commands.Bot(
+    command_prefix="!",
+    intents=intents
+)
+
+messages_envoyes = {}
 
 
-def get_next_event(hour, minute, every_hours):
-    """Trouve le prochain passage de l'événement."""
-    now = datetime.now(TIMEZONE)
+def obtenir_salon():
+    return bot.get_channel(EVENT_SALON_ID)
 
-    start = now.replace(
-        hour=hour,
-        minute=minute,
-        second=0,
-        microsecond=0
+
+def creer_datetime(date_base, heure):
+    heures, minutes = map(
+        int,
+        heure.split(":")
     )
 
-    # Si le premier horaire du jour est déjà passé,
-    # on avance par intervalles jusqu'au prochain.
-    if now < start:
-        return start
-
-    elapsed = now - start
-    intervals = int(elapsed.total_seconds() // (every_hours * 3600)) + 1
-
-    return start + timedelta(hours=intervals * every_hours)
-
-
-def get_event_status(hour, minute, every_hours):
-    """Retourne si l'event est actif et son prochain horaire."""
-    now = datetime.now(TIMEZONE)
-
-    next_event = get_next_event(hour, minute, every_hours)
-
-    # Cherche si l'événement actuel est en cours.
-    previous = next_event - timedelta(hours=every_hours)
-
-    if previous <= now < previous + DURATION:
-        return True, previous
-
-    return False, next_event
+    return datetime(
+        date_base.year,
+        date_base.month,
+        date_base.day,
+        heures,
+        minutes,
+        0,
+        0,
+        tzinfo=PARIS
+    )
 
 
-def discord_time(dt):
-    """Transforme une date en timestamp Discord."""
-    return f"<t:{int(dt.timestamp())}:R>"
+def obtenir_occurrences():
+    maintenant = datetime.now(PARIS)
+
+    occurrences = []
+
+    for jour_offset in range(3):
+
+        jour = maintenant + timedelta(
+            days=jour_offset
+        )
+
+        for nom_event, horaires in HORAIRES_EVENTS.items():
+
+            for heure in horaires:
+
+                debut = creer_datetime(
+                    jour,
+                    heure
+                )
+
+                fin = debut + timedelta(
+                    minutes=DUREE_EVENT
+                )
+
+                if fin > maintenant:
+
+                    occurrences.append({
+                        "nom": nom_event,
+                        "heure": heure,
+                        "debut": debut,
+                        "fin": fin
+                    })
+
+    occurrences.sort(
+        key=lambda event: event["debut"]
+    )
+
+    return occurrences
 
 
-def create_embed():
+def creer_embed(event):
+
+    maintenant = datetime.now(PARIS)
+
+    debut = event["debut"]
+    fin = event["fin"]
+
+    timestamp_debut = int(
+        debut.timestamp()
+    )
+
+    timestamp_fin = int(
+        fin.timestamp()
+    )
+
+    en_cours = (
+        debut <= maintenant < fin
+    )
+
     embed = discord.Embed(
-        title="🟦 Steal the Brainrot events",
-        description="**Event schedule**",
-        color=discord.Color.blue()
+        colour=discord.Colour.red()
     )
 
-    for name, data in EVENTS.items():
-        active, event_time = get_event_status(
-            data["hour"],
-            data["minute"],
-            data["every"]
+    if bot.user:
+
+        embed.set_author(
+            name=bot.user.name,
+            icon_url=bot.user.display_avatar.url
         )
 
-        if active:
-            text = "🟢 **Active now!**"
-        else:
-            text = f"⏰ Next active {discord_time(event_time)}"
+    if en_cours:
 
-        embed.add_field(
-            name=name,
-            value=text,
-            inline=False
+        embed.description = (
+            f"**<t:{timestamp_debut}:t> → "
+            f"<t:{timestamp_fin}:t> "
+            f"(<t:{timestamp_fin}:R>)**\n\n"
+            f"**{event['nom']}**\n\n"
+            f"Length: 20m 00s\n\n"
+            f"Ends <t:{timestamp_fin}:R>\n\n"
+            f"**LIVE now**"
         )
 
-    now = datetime.now(TIMEZONE)
+    else:
 
-    embed.set_footer(
-        text=f"Last update: {now.strftime('%H:%M:%S')} 🇫🇷"
-    )
+        embed.description = (
+            f"**<t:{timestamp_debut}:t> "
+            f"(<t:{timestamp_debut}:R>)**\n\n"
+            f"**{event['nom']}**\n\n"
+            f"Length: 20m 00s\n\n"
+            f"Starts <t:{timestamp_debut}:R>"
+        )
 
     return embed
 
 
-@tasks.loop(seconds=30)
-async def update_message():
-    global message
+async def envoyer_message(
+    premier,
+    deuxieme,
+    raison
+):
 
-    if message is None:
+    salon = obtenir_salon()
+
+    if salon is None:
+
+        print(
+            f"❌ Salon introuvable : {EVENT_SALON_ID}"
+        )
+
         return
 
+    cle = (
+        f"{premier['nom']}-"
+        f"{premier['debut'].strftime('%Y%m%d%H%M')}"
+    )
+
+    if cle in messages_envoyes:
+
+        return
+
+    embed1 = creer_embed(
+        premier
+    )
+
+    embed2 = creer_embed(
+        deuxieme
+    )
+
     try:
-        await message.edit(embed=create_embed())
-    except discord.NotFound:
-        message = None
+
+        message = await salon.send(
+            content=f"<@&{EVENT_PING_ROLE_ID}>",
+            embeds=[
+                embed1,
+                embed2
+            ],
+            allowed_mentions=discord.AllowedMentions(
+                roles=True
+            )
+        )
+
+        messages_envoyes[cle] = {
+            "message": message,
+            "premier": premier,
+            "deuxieme": deuxieme
+        }
+
+        print(
+            f"✅ Message envoyé : "
+            f"{premier['nom']} → "
+            f"{deuxieme['nom']} | {raison}"
+        )
+
+    except discord.Forbidden:
+
+        print(
+            "❌ Le bot n'a pas la permission "
+            "d'envoyer dans ce salon."
+        )
+
+    except Exception as erreur:
+
+        print(
+            f"❌ Erreur d'envoi : {erreur}"
+        )
+
+
+async def mettre_a_jour_messages():
+
+    maintenant = datetime.now(PARIS)
+
+    for cle, info in list(
+        messages_envoyes.items()
+    ):
+
+        premier = info["premier"]
+        deuxieme = info["deuxieme"]
+
+        embed1 = creer_embed(
+            premier
+        )
+
+        embed2 = creer_embed(
+            deuxieme
+        )
+
+        try:
+
+            await info["message"].edit(
+                embeds=[
+                    embed1,
+                    embed2
+                ]
+            )
+
+        except discord.NotFound:
+
+            messages_envoyes.pop(
+                cle,
+                None
+            )
+
+        except discord.HTTPException:
+
+            pass
+
+
+async def verifier_et_envoyer():
+
+    maintenant = datetime.now(PARIS)
+
+    occurrences = obtenir_occurrences()
+
+    if len(occurrences) < 2:
+
+        return
+
+    premier = occurrences[0]
+    deuxieme = occurrences[1]
+
+    cle = (
+        f"{premier['nom']}-"
+        f"{premier['debut'].strftime('%Y%m%d%H%M')}"
+    )
+
+    # -----------------------------------------
+    # CAS 1 : prochain event dans 10 minutes
+    # -----------------------------------------
+
+    moment_annonce = (
+        premier["debut"]
+        - timedelta(
+            minutes=ANNONCE_AVANT
+        )
+    )
+
+    if (
+        moment_annonce
+        <= maintenant
+        < premier["debut"]
+    ):
+
+        await envoyer_message(
+            premier,
+            deuxieme,
+            "10 minutes avant"
+        )
+
+        return
+
+    # -----------------------------------------
+    # CAS 2 : le premier event est actuellement LIVE
+    # -----------------------------------------
+
+    if (
+        premier["debut"]
+        <= maintenant
+        < premier["fin"]
+    ):
+
+        # Si le bot a redémarré pendant l'event
+        # et qu'aucun message n'existe encore,
+        # on envoie quand même la paire.
+
+        if cle not in messages_envoyes:
+
+            await envoyer_message(
+                premier,
+                deuxieme,
+                "event actuellement LIVE"
+            )
+
+        return
+
+    # -----------------------------------------
+    # CAS 3 : le premier event est terminé
+    # -----------------------------------------
+    #
+    # Dans ce cas, occurrences[0] est automatiquement
+    # le prochain event, et occurrences[1] celui d'après.
+    #
+    # On envoie immédiatement une nouvelle paire.
+
+    if maintenant >= premier["fin"]:
+
+        await envoyer_message(
+            premier,
+            deuxieme,
+            "event précédent terminé"
+        )
+
+
+@tasks.loop(seconds=5)
+async def boucle_events():
+
+    await verifier_et_envoyer()
+
+    await mettre_a_jour_messages()
 
 
 @bot.event
 async def on_ready():
-    global message
 
-    print(f"Connecté en tant que {bot.user}")
+    print(
+        "======================================"
+    )
 
-    channel = bot.get_channel(CHANNEL_ID)
+    print(
+        f"🤖 Bot connecté : {bot.user}"
+    )
 
-    if channel is None:
-        print("❌ CHANNEL_ID incorrect.")
-        return
+    print(
+        "🕒 Heure Paris : "
+        f"{datetime.now(PARIS).strftime('%d/%m/%Y %H:%M:%S')}"
+    )
 
-    # Cherche un ancien message du bot
-    async for msg in channel.history(limit=50):
-        if msg.author == bot.user:
-            message = msg
-            break
+    print(
+        f"📢 Salon : {EVENT_SALON_ID}"
+    )
 
-    # S'il n'existe pas, crée le message
-    if message is None:
-        message = await channel.send(embed=create_embed())
+    print(
+        f"🔔 Event Ping : {EVENT_PING_ROLE_ID}"
+    )
 
-    # Lance la mise à jour
-    if not update_message.is_running():
-        update_message.start()
+    print(
+        "📢 Annonce : 10 minutes avant"
+    )
+
+    print(
+        "⏳ Durée : 20 minutes"
+    )
+
+    print(
+        "📦 2 embeds dans le même message"
+    )
+
+    print(
+        "🔄 Nouveau message après chaque fin"
+    )
+
+    print(
+        "🌴 JUNGLE : 16:00 / 22:00"
+    )
+
+    print(
+        "======================================"
+    )
+
+    salon = obtenir_salon()
+
+    if salon:
+
+        print(
+            f"✅ Salon trouvé : #{salon.name}"
+        )
+
+    else:
+
+        print(
+            "❌ Salon introuvable."
+        )
+
+    if not boucle_events.is_running():
+
+        boucle_events.start()
+
+        print(
+            "✅ Système Events activé !"
+        )
 
 
-bot.run(TOKEN)
+print(
+    "🚀 Démarrage du bot..."
+)
+
+if not TOKEN:
+
+    print(
+        "❌ DISCORD_TOKEN introuvable dans .env"
+    )
+
+else:
+
+    bot.run(
+        TOKEN,
+        reconnect=True
+    )
+'@
+
+Set-Content -Path "bot.py" -Value $code -Encoding UTF8
+
+Write-Host ""
+Write-Host "======================================"
+Write-Host "✅ BOT MIS A JOUR"
+Write-Host "📢 Salon : 1543989597900513291"
+Write-Host "📦 2 embeds par message"
+Write-Host "📢 Annonce 10 minutes avant"
+Write-Host "🔄 Nouveau message après chaque fin"
+Write-Host "⏳ Durée : 20 minutes"
+Write-Host "🌴 JUNGLE : 16:00 / 22:00"
+Write-Host "🔔 @Event Ping"
+Write-Host "🚫 Aucun lien Discord"
+Write-Host "======================================"
+Write-Host ""
+Write-Host "🚀 Lancement..."
+Write-Host ""
+
+python bot.py
