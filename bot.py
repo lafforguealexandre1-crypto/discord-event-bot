@@ -1,3 +1,4 @@
+```python
 import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -12,6 +13,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 
 GUILD_ID = 1519087155412992011
 EVENT_SALON_ID = 1543989597900513291
+EVENT_ROLE_ID = 1553145917476180048
 
 PARIS = ZoneInfo("Europe/Paris")
 
@@ -62,7 +64,8 @@ bot = discord.Client(
     intents=intents
 )
 
-annonces_envoyees = set()
+events_deja_termines = set()
+dernier_cycle_fini = None
 
 
 def creer_datetime(date_base, heure):
@@ -124,6 +127,13 @@ def obtenir_occurrences():
     return occurrences
 
 
+def creer_cle(event):
+    return (
+        f"{event['nom']}-"
+        f"{event['debut'].strftime('%Y%m%d%H%M')}"
+    )
+
+
 def creer_embed(event):
     maintenant = datetime.now(PARIS)
 
@@ -179,7 +189,11 @@ def creer_embed(event):
     return embed
 
 
-async def envoyer_message(premier, deuxieme, raison):
+async def envoyer_message(
+    premier,
+    deuxieme,
+    raison
+):
     salon = bot.get_channel(
         EVENT_SALON_ID
     )
@@ -190,27 +204,17 @@ async def envoyer_message(premier, deuxieme, raison):
         )
         return
 
-    cle = (
-        f"{premier['nom']}-"
-        f"{premier['debut'].strftime('%Y%m%d%H%M')}"
-    )
-
-    if cle in annonces_envoyees:
-        return
-
     try:
         await salon.send(
-            content="@here",
+            content=f"<@&{EVENT_ROLE_ID}>",
             embeds=[
                 creer_embed(premier),
                 creer_embed(deuxieme)
             ],
             allowed_mentions=discord.AllowedMentions(
-                everyone=True
+                roles=True
             )
         )
-
-        annonces_envoyees.add(cle)
 
         print(
             f"✅ Message envoyé : "
@@ -221,7 +225,8 @@ async def envoyer_message(premier, deuxieme, raison):
     except discord.Forbidden:
         print(
             "❌ Le bot n'a pas la permission "
-            "d'envoyer dans ce salon."
+            "de mentionner ce rôle ou d'envoyer "
+            "dans ce salon."
         )
 
     except Exception as erreur:
@@ -232,51 +237,60 @@ async def envoyer_message(premier, deuxieme, raison):
 
 @tasks.loop(seconds=5)
 async def verifier_evenements():
+    global dernier_cycle_fini
+
     maintenant = datetime.now(PARIS)
 
     occurrences = obtenir_occurrences()
 
-    events_futurs = [
+    futurs = [
         event
         for event in occurrences
         if event["debut"] > maintenant
     ]
 
-    if len(events_futurs) < 2:
+    if len(futurs) < 2:
         return
 
-    premier = events_futurs[0]
-    deuxieme = events_futurs[1]
+    premier = futurs[0]
+    deuxieme = futurs[1]
 
-    events_termines = [
+    termines = [
         event
         for event in occurrences
         if event["fin"] <= maintenant
     ]
 
-    if not events_termines:
+    if not termines:
         return
 
-    dernier_termine = events_termines[-1]
+    dernier_termine = termines[-1]
 
-    cle_declencheur = (
-        f"FIN-"
-        f"{dernier_termine['nom']}-"
-        f"{dernier_termine['debut'].strftime('%Y%m%d%H%M')}"
+    cle = creer_cle(
+        dernier_termine
     )
 
-    if cle_declencheur in annonces_envoyees:
-        return
+    if cle not in events_deja_termines:
+        events_deja_termines.add(cle)
 
-    await envoyer_message(
-        premier,
-        deuxieme,
-        f"{dernier_termine['nom']} terminé"
-    )
+        if dernier_cycle_fini is None:
+            dernier_cycle_fini = dernier_termine["fin"]
 
-    annonces_envoyees.add(
-        cle_declencheur
-    )
+            print(
+                f"ℹ️ Initialisation après : "
+                f"{dernier_termine['nom']}"
+            )
+
+            return
+
+        if dernier_termine["fin"] != dernier_cycle_fini:
+            dernier_cycle_fini = dernier_termine["fin"]
+
+            await envoyer_message(
+                premier,
+                deuxieme,
+                f"{dernier_termine['nom']} terminé"
+            )
 
 
 @bot.event
@@ -299,7 +313,7 @@ async def on_ready():
     )
 
     print(
-        "🔔 Ping : @here"
+        f"🔔 Rôle Event : {EVENT_ROLE_ID}"
     )
 
     print(
@@ -352,3 +366,4 @@ else:
         TOKEN,
         reconnect=True
     )
+```
