@@ -61,8 +61,7 @@ bot = discord.Client(
     intents=intents
 )
 
-events_deja_termines = set()
-dernier_cycle_fini = None
+paire_actuelle = None
 
 
 def creer_datetime(date_base, heure):
@@ -99,12 +98,10 @@ def obtenir_occurrences():
         ):
             date_event = jour
 
-            # 00h30 appartient au jour suivant
-            # du planning qui commence à 02h00.
+            # 00:30 appartient au jour suivant
+            # du planning qui commence à 02:00.
             if heure == "00:30":
-                date_event = (
-                    jour + timedelta(days=1)
-                )
+                date_event = jour + timedelta(days=1)
 
             debut = creer_datetime(
                 datetime(
@@ -144,6 +141,89 @@ def creer_cle(event):
     return (
         f"{event['nom']}-"
         f"{event['debut'].strftime('%Y%m%d%H%M')}"
+    )
+
+
+def obtenir_paire_actuelle(occurrences, maintenant):
+    actifs = [
+        event
+        for event in occurrences
+        if event["debut"] <= maintenant < event["fin"]
+    ]
+
+    actifs.sort(
+        key=lambda event: (
+            event["debut"],
+            event["index"]
+        )
+    )
+
+    if len(actifs) >= 2:
+        return (
+            actifs[0],
+            actifs[1]
+        )
+
+    if len(actifs) == 1:
+        futurs = [
+            event
+            for event in occurrences
+            if event["debut"] > maintenant
+        ]
+
+        if futurs:
+            return (
+                actifs[0],
+                futurs[0]
+            )
+
+        return None
+
+    futurs = [
+        event
+        for event in occurrences
+        if event["debut"] > maintenant
+    ]
+
+    if len(futurs) >= 2:
+        return (
+            futurs[0],
+            futurs[1]
+        )
+
+    return None
+
+
+def paire_est_terminee(paire, maintenant):
+    if paire is None:
+        return False
+
+    premier, deuxieme = paire
+
+    return (
+        premier["fin"] <= maintenant
+        and deuxieme["fin"] <= maintenant
+    )
+
+
+def obtenir_prochaine_paire(occurrences, paire, maintenant):
+    if paire is None:
+        return None
+
+    _, deuxieme = paire
+
+    suivants = [
+        event
+        for event in occurrences
+        if event["debut"] >= deuxieme["fin"]
+    ]
+
+    if len(suivants) < 2:
+        return None
+
+    return (
+        suivants[0],
+        suivants[1]
     )
 
 
@@ -202,11 +282,12 @@ def creer_embed(event):
     return embed
 
 
-async def envoyer_message(
-    premier,
-    deuxieme,
-    raison
-):
+async def envoyer_message(paire, raison):
+    if paire is None:
+        return
+
+    premier, deuxieme = paire
+
     salon = bot.get_channel(
         EVENT_SALON_ID
     )
@@ -250,66 +331,56 @@ async def envoyer_message(
 
 @tasks.loop(seconds=5)
 async def verifier_evenements():
-    global dernier_cycle_fini
+    global paire_actuelle
 
     maintenant = datetime.now(PARIS)
 
     occurrences = obtenir_occurrences()
 
-    futurs = [
-        event
-        for event in occurrences
-        if event["debut"] > maintenant
-    ]
-
-    if len(futurs) < 2:
-        return
-
-    premier = futurs[0]
-    deuxieme = futurs[1]
-
-    termines = [
-        event
-        for event in occurrences
-        if event["fin"] <= maintenant
-    ]
-
-    if not termines:
-        return
-
-    dernier_termine = max(
-        termines,
-        key=lambda event: (
-            event["fin"],
-            event["index"]
+    # Première initialisation :
+    # on détecte simplement les 2 events actuels/suivants
+    # sans envoyer de message inutile au démarrage.
+    if paire_actuelle is None:
+        paire_actuelle = obtenir_paire_actuelle(
+            occurrences,
+            maintenant
         )
-    )
 
-    cle = creer_cle(
-        dernier_termine
-    )
-
-    if cle not in events_deja_termines:
-        events_deja_termines.add(cle)
-
-        if dernier_cycle_fini is None:
-            dernier_cycle_fini = dernier_termine["fin"]
-
+        if paire_actuelle:
             print(
-                f"ℹ️ Initialisation après : "
-                f"{dernier_termine['nom']}"
+                "ℹ️ Paire actuelle : "
+                f"{paire_actuelle[0]['nom']} → "
+                f"{paire_actuelle[1]['nom']}"
             )
 
-            return
+        return
 
-        if dernier_termine["fin"] != dernier_cycle_fini:
-            dernier_cycle_fini = dernier_termine["fin"]
+    # On attend que LES DEUX events du message actuel
+    # soient complètement terminés.
+    if not paire_est_terminee(
+        paire_actuelle,
+        maintenant
+    ):
+        return
 
-            await envoyer_message(
-                premier,
-                deuxieme,
-                f"{dernier_termine['nom']} terminé"
-            )
+    prochaine_paire = obtenir_prochaine_paire(
+        occurrences,
+        paire_actuelle,
+        maintenant
+    )
+
+    if prochaine_paire is None:
+        return
+
+    ancienne_paire = paire_actuelle
+
+    paire_actuelle = prochaine_paire
+
+    await envoyer_message(
+        paire_actuelle,
+        f"{ancienne_paire[0]['nom']} + "
+        f"{ancienne_paire[1]['nom']} terminés"
+    )
 
 
 @bot.event
@@ -336,7 +407,7 @@ async def on_ready():
     )
 
     print(
-        "📢 Annonce : dès qu'un event est terminé"
+        "📢 Annonce : après la fin des 2 events"
     )
 
     print(
