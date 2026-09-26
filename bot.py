@@ -37,13 +37,11 @@ HORAIRES_EVENTS = [
     ("TOKYO", "11:00", DUREE_EVENT),
     ("UNDERWATER", "11:30", DUREE_EVENT),
     ("CHILL HOUR", "11:30", DUREE_CHILL),
-    ("JUNGLE", "13:00", DUREE_EVENT),
-    ("CRYSTAL", "14:00", DUREE_EVENT),
     ("GOTHIC", "14:30", DUREE_EVENT),
     ("JUNGLE", "16:00", DUREE_EVENT),
     ("CHILL HOUR", "16:30", DUREE_CHILL),
-    ("UNDERWATER", "17:00", DUREE_EVENT),
-    ("HEAVEN", "17:30", DUREE_EVENT),
+    ("TOKYO", "17:00", DUREE_EVENT),
+    ("UNDERWATER", "17:30", DUREE_EVENT),
     ("ADMIN MACHINE", "18:30", DUREE_EVENT),
     ("GOTHIC", "19:00", DUREE_EVENT),
     ("SUMMER", "20:00", DUREE_EVENT),
@@ -63,7 +61,8 @@ bot = discord.Client(
     intents=intents
 )
 
-dernier_evenement_annonce = None
+events_deja_termines = set()
+dernier_cycle_fini = None
 
 
 def creer_datetime(date_base, heure):
@@ -100,19 +99,12 @@ def obtenir_occurrences():
         ):
             date_event = jour
 
-            # IMPORTANT :
-            # L'event de 00:30 appartient au jour suivant
-            # par rapport au planning qui commence à 02:00.
+            # 00h30 appartient au jour suivant
+            # du planning qui commence à 02h00.
             if heure == "00:30":
                 date_event = (
-                    datetime(
-                        jour.year,
-                        jour.month,
-                        jour.day,
-                        tzinfo=PARIS
-                    )
-                    + timedelta(days=1)
-                ).date()
+                    jour + timedelta(days=1)
+                )
 
             debut = creer_datetime(
                 datetime(
@@ -246,8 +238,8 @@ async def envoyer_message(
     except discord.Forbidden:
         print(
             "❌ Le bot n'a pas la permission "
-            "de mentionner ce rôle ou "
-            "d'envoyer dans ce salon."
+            "de mentionner ce rôle ou d'envoyer "
+            "dans ce salon."
         )
 
     except Exception as erreur:
@@ -258,7 +250,7 @@ async def envoyer_message(
 
 @tasks.loop(seconds=5)
 async def verifier_evenements():
-    global dernier_evenement_annonce
+    global dernier_cycle_fini
 
     maintenant = datetime.now(PARIS)
 
@@ -272,6 +264,9 @@ async def verifier_evenements():
 
     if len(futurs) < 2:
         return
+
+    premier = futurs[0]
+    deuxieme = futurs[1]
 
     termines = [
         event
@@ -290,35 +285,31 @@ async def verifier_evenements():
         )
     )
 
-    cle_dernier_termine = creer_cle(
+    cle = creer_cle(
         dernier_termine
     )
 
-    # Au premier lancement, on mémorise simplement
-    # le dernier event déjà terminé pour éviter
-    # une annonce inutile.
-    if dernier_evenement_annonce is None:
-        dernier_evenement_annonce = (
-            cle_dernier_termine
-        )
-        return
+    if cle not in events_deja_termines:
+        events_deja_termines.add(cle)
 
-    # Aucun nouvel event terminé.
-    if cle_dernier_termine == dernier_evenement_annonce:
-        return
+        if dernier_cycle_fini is None:
+            dernier_cycle_fini = dernier_termine["fin"]
 
-    dernier_evenement_annonce = (
-        cle_dernier_termine
-    )
+            print(
+                f"ℹ️ Initialisation après : "
+                f"{dernier_termine['nom']}"
+            )
 
-    premier = futurs[0]
-    deuxieme = futurs[1]
+            return
 
-    await envoyer_message(
-        premier,
-        deuxieme,
-        f"{dernier_termine['nom']} terminé"
-    )
+        if dernier_termine["fin"] != dernier_cycle_fini:
+            dernier_cycle_fini = dernier_termine["fin"]
+
+            await envoyer_message(
+                premier,
+                deuxieme,
+                f"{dernier_termine['nom']} terminé"
+            )
 
 
 @bot.event
