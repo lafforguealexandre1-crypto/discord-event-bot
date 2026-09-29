@@ -37,11 +37,12 @@ HORAIRES_EVENTS = [
     ("TOKYO", "11:00", DUREE_EVENT),
     ("UNDERWATER", "11:30", DUREE_EVENT),
     ("CHILL HOUR", "11:30", DUREE_CHILL),
+    ("SUMMER", "14:00", DUREE_EVENT),
     ("GOTHIC", "14:30", DUREE_EVENT),
     ("JUNGLE", "16:00", DUREE_EVENT),
     ("CHILL HOUR", "16:30", DUREE_CHILL),
-    ("TOKYO", "17:00", DUREE_EVENT),
-    ("UNDERWATER", "17:30", DUREE_EVENT),
+    ("UNDERWATER", "17:00", DUREE_EVENT),
+    ("CHILL HOUR", "17:30", DUREE_CHILL),
     ("ADMIN MACHINE", "18:30", DUREE_EVENT),
     ("GOTHIC", "19:00", DUREE_EVENT),
     ("SUMMER", "20:00", DUREE_EVENT),
@@ -98,7 +99,7 @@ def obtenir_occurrences():
         ):
             date_event = jour
 
-            # 00:30 appartient au jour suivant
+            # L'event de 00:30 appartient au jour suivant
             # du planning qui commence à 02:00.
             if heure == "00:30":
                 date_event = jour + timedelta(days=1)
@@ -337,9 +338,8 @@ async def verifier_evenements():
 
     occurrences = obtenir_occurrences()
 
-    # Première initialisation :
-    # on détecte simplement les 2 events actuels/suivants
-    # sans envoyer de message inutile au démarrage.
+    # Première initialisation : on mémorise
+    # simplement la paire actuelle/suivante.
     if paire_actuelle is None:
         paire_actuelle = obtenir_paire_actuelle(
             occurrences,
@@ -355,8 +355,8 @@ async def verifier_evenements():
 
         return
 
-    # On attend que LES DEUX events du message actuel
-    # soient complètement terminés.
+    # Le bot attend que LES DEUX events
+    # du message actuel soient terminés.
     if not paire_est_terminee(
         paire_actuelle,
         maintenant
