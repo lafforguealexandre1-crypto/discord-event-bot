@@ -38,6 +38,7 @@ HORAIRES_EVENTS = [
     ("TOKYO", "05:00", DUREE_EVENT),
     ("UNDERWATER", "05:30", DUREE_EVENT),
     ("CHILL HOUR", "05:30", DUREE_CHILL),
+
     ("ADMIN MACHINE", "06:30", DUREE_EVENT),
     ("GOTHIC", "07:00", DUREE_EVENT),
     ("SUMMER", "08:00", DUREE_EVENT),
@@ -46,12 +47,15 @@ HORAIRES_EVENTS = [
     ("TOKYO", "11:00", DUREE_EVENT),
     ("UNDERWATER", "11:30", DUREE_EVENT),
     ("CHILL HOUR", "11:30", DUREE_CHILL),
+
     ("SUMMER", "14:00", DUREE_EVENT),
     ("GOTHIC", "14:30", DUREE_EVENT),
     ("JUNGLE", "16:00", DUREE_EVENT),
-    ("CHILL HOUR", "16:30", DUREE_CHILL),
-    ("UNDERWATER", "17:00", DUREE_EVENT),
+
+    # CHILL HOUR CORRIGÉ
     ("CHILL HOUR", "17:30", DUREE_CHILL),
+
+    ("UNDERWATER", "17:00", DUREE_EVENT),
     ("ADMIN MACHINE", "18:30", DUREE_EVENT),
     ("GOTHIC", "19:00", DUREE_EVENT),
     ("SUMMER", "20:00", DUREE_EVENT),
@@ -99,7 +103,7 @@ def creer_datetime(date_base, heure):
 
 
 # =========================================================
-# OBTENIR LES EVENTS
+# OBTENIR TOUS LES EVENTS
 # =========================================================
 
 def obtenir_occurrences():
@@ -124,11 +128,11 @@ def obtenir_occurrences():
                 heure
             )
 
-            # 00:30 = jour suivant
+            # 00:30 appartient au jour suivant
             if heure == "00:30":
                 debut += timedelta(days=1)
 
-            # Durée automatique
+            # Calcul automatique de la fin
             fin = debut + timedelta(
                 minutes=duree
             )
@@ -149,24 +153,6 @@ def obtenir_occurrences():
     )
 
     return occurrences
-
-
-# =========================================================
-# TROUVER LES 2 PROCHAINS EVENTS
-# =========================================================
-
-def obtenir_prochains_events(
-    occurrences,
-    maintenant
-):
-
-    futurs = [
-        event
-        for event in occurrences
-        if event["debut"] > maintenant
-    ]
-
-    return futurs[:2]
 
 
 # =========================================================
@@ -198,7 +184,25 @@ def obtenir_event_en_cours(
 
 
 # =========================================================
-# EMBED
+# TROUVER LES 2 PROCHAINS EVENTS
+# =========================================================
+
+def obtenir_prochains_events(
+    occurrences,
+    maintenant
+):
+
+    futurs = [
+        event
+        for event in occurrences
+        if event["debut"] > maintenant
+    ]
+
+    return futurs[:2]
+
+
+# =========================================================
+# CRÉER L'EMBED
 # =========================================================
 
 def creer_embed(
@@ -230,7 +234,7 @@ def creer_embed(
         inline=False
     )
 
-    # Event en cours
+    # EVENT EN COURS
     if debut <= maintenant < fin:
 
         embed.add_field(
@@ -245,7 +249,7 @@ def creer_embed(
             inline=False
         )
 
-    # Event à venir
+    # EVENT À VENIR
     else:
 
         embed.add_field(
@@ -326,10 +330,7 @@ async def verifier_events():
 
     occurrences = obtenir_occurrences()
 
-    # -----------------------------------------------------
-    # INITIALISATION
-    # -----------------------------------------------------
-
+    # PREMIER LANCEMENT
     if paire_actuelle is None:
 
         event_en_cours = obtenir_event_en_cours(
@@ -365,10 +366,7 @@ async def verifier_events():
 
         return
 
-    # -----------------------------------------------------
     # ATTENDRE LA FIN DES 2 EVENTS
-    # -----------------------------------------------------
-
     if len(paire_actuelle) < 2:
         return
 
@@ -380,10 +378,7 @@ async def verifier_events():
     if maintenant < fin_des_events:
         return
 
-    # -----------------------------------------------------
     # TROUVER LES 2 SUIVANTS
-    # -----------------------------------------------------
-
     prochains = [
         event
         for event in occurrences
@@ -404,7 +399,7 @@ async def verifier_events():
 
 
 # =========================================================
-# AU DÉMARRAGE DU BOT
+# DÉMARRAGE DU BOT
 # =========================================================
 
 @bot.event
@@ -441,10 +436,7 @@ async def on_ready():
         "⏰ Timestamps Discord activés"
     )
 
-    # -----------------------------------------------------
-    # ENVOYER LES 2 PROCHAINS EVENTS AU DÉMARRAGE
-    # -----------------------------------------------------
-
+    # ENVOYER LES 2 EVENTS AU DÉMARRAGE
     if not deja_envoye_au_demarrage:
 
         maintenant = datetime.now(PARIS)
@@ -497,10 +489,7 @@ async def on_ready():
                 "✅ Vérification envoyée au démarrage."
             )
 
-    # -----------------------------------------------------
     # LANCER LA BOUCLE
-    # -----------------------------------------------------
-
     if not verifier_events.is_running():
 
         verifier_events.start()
