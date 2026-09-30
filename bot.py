@@ -32,35 +32,49 @@ DUREE_CHILL = 60
 HORAIRES_EVENTS = [
     ("GOTHIC", "02:00", DUREE_EVENT),
     ("SUMMER", "02:00", DUREE_EVENT),
+
     ("GOTHIC", "02:30", DUREE_EVENT),
     ("RAVE", "03:30", DUREE_EVENT),
     ("JUNGLE", "04:00", DUREE_EVENT),
+
     ("TOKYO", "05:00", DUREE_EVENT),
     ("UNDERWATER", "05:30", DUREE_EVENT),
     ("CHILL HOUR", "05:30", DUREE_CHILL),
+
     ("ADMIN MACHINE", "06:30", DUREE_EVENT),
     ("GOTHIC", "07:00", DUREE_EVENT),
     ("SUMMER", "08:00", DUREE_EVENT),
+
     ("RAVE", "09:30", DUREE_EVENT),
     ("JUNGLE", "10:00", DUREE_EVENT),
+
     ("TOKYO", "11:00", DUREE_EVENT),
     ("UNDERWATER", "11:30", DUREE_EVENT),
     ("CHILL HOUR", "11:30", DUREE_CHILL),
+
     ("SUMMER", "14:00", DUREE_EVENT),
     ("GOTHIC", "14:30", DUREE_EVENT),
+
     ("JUNGLE", "16:00", DUREE_EVENT),
     ("CHILL HOUR", "16:30", DUREE_CHILL),
+
     ("UNDERWATER", "17:00", DUREE_EVENT),
     ("CHILL HOUR", "17:30", DUREE_CHILL),
+
     ("ADMIN MACHINE", "18:30", DUREE_EVENT),
     ("GOTHIC", "19:00", DUREE_EVENT),
+
     ("SUMMER", "20:00", DUREE_EVENT),
     ("MAGICAL", "20:30", DUREE_EVENT),
+
     ("HEAVEN", "21:00", DUREE_EVENT),
     ("JUNGLE", "22:00", DUREE_EVENT),
+
     ("VOID", "23:00", DUREE_EVENT),
+
     ("HEAVEN", "23:30", DUREE_EVENT),
     ("CHILL HOUR", "23:30", DUREE_CHILL),
+
     ("ADMIN MACHINE", "00:30", DUREE_EVENT),
 ]
 
@@ -93,15 +107,18 @@ intents = discord.Intents.default()
 bot = discord.Client(intents=intents)
 
 paire_actuelle = None
-dernier_message = None
 
 
 # =========================================================
-# CRÉER UNE DATE
+# CRÉER UNE DATE AVEC L'HEURE
 # =========================================================
 
 def creer_datetime(date_base, heure):
-    heures, minutes = map(int, heure.split(":"))
+
+    heures, minutes = map(
+        int,
+        heure.split(":")
+    )
 
     return datetime(
         date_base.year,
@@ -118,22 +135,35 @@ def creer_datetime(date_base, heure):
 # =========================================================
 
 def obtenir_occurrences():
+
     maintenant = datetime.now(PARIS)
 
     occurrences = []
 
     for jour_offset in range(4):
-        date_base = maintenant.date() + timedelta(days=jour_offset)
 
-        for index, (nom, heure, duree) in enumerate(HORAIRES_EVENTS):
+        date_base = (
+            maintenant.date()
+            + timedelta(days=jour_offset)
+        )
 
-            debut = creer_datetime(date_base, heure)
+        for index, (nom, heure, duree) in enumerate(
+            HORAIRES_EVENTS
+        ):
+
+            debut = creer_datetime(
+                date_base,
+                heure
+            )
 
             # 00:30 appartient au jour suivant
             if heure == "00:30":
                 debut += timedelta(days=1)
 
-            fin = debut + timedelta(minutes=duree)
+            # Durée automatique
+            fin = debut + timedelta(
+                minutes=duree
+            )
 
             occurrences.append({
                 "nom": nom,
@@ -154,10 +184,42 @@ def obtenir_occurrences():
 
 
 # =========================================================
+# TROUVER L'EVENT EN COURS
+# =========================================================
+
+def obtenir_event_en_cours(
+    occurrences,
+    maintenant
+):
+
+    actifs = [
+        event
+        for event in occurrences
+        if (
+            event["debut"]
+            <= maintenant
+            < event["fin"]
+        )
+    ]
+
+    if not actifs:
+        return None
+
+    actifs.sort(
+        key=lambda event: event["debut"]
+    )
+
+    return actifs[0]
+
+
+# =========================================================
 # TROUVER LES 2 PROCHAINS EVENTS
 # =========================================================
 
-def obtenir_prochains_events(occurrences, maintenant):
+def obtenir_prochains_events(
+    occurrences,
+    maintenant
+):
 
     futurs = [
         event
@@ -169,58 +231,24 @@ def obtenir_prochains_events(occurrences, maintenant):
 
 
 # =========================================================
-# TROUVER L'EVENT EN COURS
+# TIMESTAMP DISCORD
 # =========================================================
 
-def obtenir_event_en_cours(occurrences, maintenant):
+def timestamp(datetime_obj):
 
-    actifs = [
-        event
-        for event in occurrences
-        if event["debut"] <= maintenant < event["fin"]
-    ]
-
-    if not actifs:
-        return None
-
-    actifs.sort(key=lambda event: event["debut"])
-
-    return actifs[0]
-
-
-# =========================================================
-# FORMATER LE TEMPS
-# =========================================================
-
-def temps_restant(depart, maintenant):
-
-    secondes = int((depart - maintenant).total_seconds())
-
-    if secondes < 0:
-        secondes = 0
-
-    minutes = secondes // 60
-
-    if minutes < 60:
-        return f"{minutes} minute{'s' if minutes != 1 else ''}"
-
-    heures = minutes // 60
-    minutes_restantes = minutes % 60
-
-    if minutes_restantes == 0:
-        return f"{heures} heure{'s' if heures != 1 else ''}"
-
-    return (
-        f"{heures} heure{'s' if heures != 1 else ''} "
-        f"{minutes_restantes} minute{'s' if minutes_restantes != 1 else ''}"
+    return int(
+        datetime_obj.timestamp()
     )
 
 
 # =========================================================
-# EMBED D'UN EVENT
+# CRÉER L'EMBED
 # =========================================================
 
-def creer_embed(event, maintenant):
+def creer_embed(
+    event,
+    maintenant
+):
 
     debut = event["debut"]
     fin = event["fin"]
@@ -230,14 +258,34 @@ def creer_embed(event, maintenant):
         event["nom"]
     )
 
+    debut_ts = timestamp(debut)
+    fin_ts = timestamp(fin)
+
+    # -----------------------------------------------------
+    # TITRE
+    # -----------------------------------------------------
+
+    titre = (
+        f"<t:{debut_ts}:t>"
+        f" ➜ "
+        f"<t:{fin_ts}:t>"
+    )
+
     embed = discord.Embed(
-        title=f"{debut.strftime('%H:%M')} ➜ {fin.strftime('%H:%M')}",
+        title=titre,
         color=discord.Color.red()
     )
 
+    # -----------------------------------------------------
+    # NOM + DURÉE
+    # -----------------------------------------------------
+
     embed.add_field(
         name=nom,
-        value=f"Length: {event['duree']}m 00s",
+        value=(
+            f"Length: "
+            f"{event['duree']}m 00s"
+        ),
         inline=False
     )
 
@@ -255,7 +303,7 @@ def creer_embed(event, maintenant):
 
         embed.add_field(
             name="Fin",
-            value=f"dans {temps_restant(fin, maintenant)}",
+            value=f"<t:{fin_ts}:R>",
             inline=False
         )
 
@@ -267,13 +315,13 @@ def creer_embed(event, maintenant):
 
         embed.add_field(
             name="Starts",
-            value=f"dans {temps_restant(debut, maintenant)}",
+            value=f"<t:{debut_ts}:R>",
             inline=False
         )
 
         embed.add_field(
             name="Fin",
-            value=f"dans {temps_restant(fin, maintenant)}",
+            value=f"<t:{fin_ts}:R>",
             inline=False
         )
 
@@ -284,21 +332,32 @@ def creer_embed(event, maintenant):
 # ENVOYER LE MESSAGE
 # =========================================================
 
-async def envoyer_message(events, maintenant):
+async def envoyer_message(
+    events,
+    maintenant
+):
 
-    global dernier_message
-
-    salon = bot.get_channel(EVENT_SALON_ID)
+    salon = bot.get_channel(
+        EVENT_SALON_ID
+    )
 
     if salon is None:
-        print("❌ Salon introuvable.")
+
+        print(
+            "❌ Salon introuvable."
+        )
+
         return
 
     embeds = []
 
     for event in events:
+
         embeds.append(
-            creer_embed(event, maintenant)
+            creer_embed(
+                event,
+                maintenant
+            )
         )
 
     message = (
@@ -309,7 +368,7 @@ async def envoyer_message(events, maintenant):
 
     try:
 
-        dernier_message = await salon.send(
+        await salon.send(
             content=message,
             embeds=embeds,
             allowed_mentions=discord.AllowedMentions(
@@ -318,8 +377,8 @@ async def envoyer_message(events, maintenant):
         )
 
         print(
-            "📢 Message envoyé :",
-            ", ".join(
+            "📢 Message envoyé : "
+            + ", ".join(
                 event["nom"]
                 for event in events
             )
@@ -333,7 +392,7 @@ async def envoyer_message(events, maintenant):
 
 
 # =========================================================
-# BOUCLE DES EVENTS
+# VÉRIFICATION DES EVENTS
 # =========================================================
 
 @tasks.loop(seconds=5)
@@ -369,44 +428,49 @@ async def verifier_events():
             ]
 
             if futurs:
+
                 paire_actuelle.append(
                     futurs[0]
                 )
 
         else:
 
-            paire_actuelle = obtenir_prochains_events(
-                occurrences,
-                maintenant
+            paire_actuelle = (
+                obtenir_prochains_events(
+                    occurrences,
+                    maintenant
+                )
             )
 
         return
 
     # -----------------------------------------------------
-    # VÉRIFIER SI LES 2 EVENTS SONT TERMINÉS
+    # IL FAUT 2 EVENTS
     # -----------------------------------------------------
 
     if len(paire_actuelle) < 2:
         return
 
-    deuxieme_event = paire_actuelle[1]
-
-    if deuxieme_event["fin"] > maintenant:
-        return
-
     # -----------------------------------------------------
-    # CHERCHER LES 2 EVENTS SUIVANTS
+    # ATTENDRE LA FIN DES 2 EVENTS
     # -----------------------------------------------------
 
-    derniers_fin = max(
+    fin_des_events = max(
         event["fin"]
         for event in paire_actuelle
     )
 
+    if maintenant < fin_des_events:
+        return
+
+    # -----------------------------------------------------
+    # TROUVER LES 2 EVENTS SUIVANTS
+    # -----------------------------------------------------
+
     prochains = [
         event
         for event in occurrences
-        if event["debut"] >= derniers_fin
+        if event["debut"] >= fin_des_events
     ]
 
     prochains = prochains[:2]
@@ -414,10 +478,14 @@ async def verifier_events():
     if len(prochains) < 2:
         return
 
+    # -----------------------------------------------------
+    # NOUVELLE PAIRE
+    # -----------------------------------------------------
+
     paire_actuelle = prochains
 
     # -----------------------------------------------------
-    # ENVOYER LE NOUVEAU MESSAGE
+    # ENVOYER LE MESSAGE
     # -----------------------------------------------------
 
     await envoyer_message(
@@ -446,15 +514,23 @@ async def on_ready():
     )
 
     print(
-        "🕐 Fuseau horaire : Europe/Paris"
+        "🕐 Fuseau : Europe/Paris"
     )
 
     print(
-        "⏱️ Events : 20 minutes"
+        "⏱️ Events normaux : 20 minutes"
     )
 
     print(
-        "🧊 Chill Hour : 1 heure"
+        "🧊 Chill Hour : 60 minutes"
+    )
+
+    print(
+        "🕐 Fin calculée automatiquement"
+    )
+
+    print(
+        "⏰ Timestamps Discord activés"
     )
 
     print(
@@ -462,8 +538,7 @@ async def on_ready():
     )
 
     print(
-        "⏳ Le prochain message est envoyé "
-        "uniquement après la fin des 2 events."
+        "⏳ Attente de la fin des 2 events"
     )
 
     if not verifier_events.is_running():
@@ -482,7 +557,8 @@ async def on_ready():
 if not TOKEN:
 
     raise ValueError(
-        "❌ DISCORD_TOKEN est introuvable dans les variables Railway."
+        "❌ DISCORD_TOKEN est introuvable "
+        "dans les variables Railway."
     )
 
 
