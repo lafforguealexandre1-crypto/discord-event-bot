@@ -39,33 +39,39 @@ HORAIRES_EVENTS = [
     ("UNDERWATER", "05:30", DUREE_EVENT),
     ("CHILL HOUR", "05:30", DUREE_CHILL),
 
-    ("ADMIN MACHINE", "06:30", DUREE_EVENT),
-    ("GOTHIC", "07:00", DUREE_EVENT),
-    ("SUMMER", "08:00", DUREE_EVENT),
-    ("RAVE", "09:30", DUREE_EVENT),
-    ("JUNGLE", "10:00", DUREE_EVENT),
-    ("TOKYO", "11:00", DUREE_EVENT),
-    ("UNDERWATER", "11:30", DUREE_EVENT),
-    ("CHILL HOUR", "11:30", DUREE_CHILL),
-
-    ("SUMMER", "14:00", DUREE_EVENT),
-    ("GOTHIC", "14:30", DUREE_EVENT),
-    ("JUNGLE", "16:00", DUREE_EVENT),
-
-    # CHILL HOUR CORRIGÉ
-    ("CHILL HOUR", "17:30", DUREE_CHILL),
-
-    ("UNDERWATER", "17:00", DUREE_EVENT),
-    ("ADMIN MACHINE", "18:30", DUREE_EVENT),
-    ("GOTHIC", "19:00", DUREE_EVENT),
-    ("SUMMER", "20:00", DUREE_EVENT),
-    ("MAGICAL", "20:30", DUREE_EVENT),
-    ("HEAVEN", "21:00", DUREE_EVENT),
-    ("JUNGLE", "22:00", DUREE_EVENT),
-    ("VOID", "23:00", DUREE_EVENT),
-    ("HEAVEN", "23:30", DUREE_EVENT),
-    ("CHILL HOUR", "23:30", DUREE_CHILL),
-    ("ADMIN MACHINE", "00:30", DUREE_EVENT),
+    01h00 : Gothic Event - 
+01h00 : Underwater Event -
+02h00 :  Void Event -
+02h30 : Rave Event -
+03h00 :  Halloween Event - 
+4h00 : Magical Event  -
+04h30 : Summer Event  -
+04h30 : Chill Hour (Dure 1h) -  
+05h30 : Admin Machine -
+06h00 : Gothic Event 
+07h00 : Void Event 
+08h30 : Rave Event 
+09h00 :  Halloween Event -
+10h00 : Tokyo Event 
+10h30 :  Underwater Event 
+10h30 : Chill Hour (Dure 1h) 
+13h30 : Jungle Event
+15h00 : Halloween Event 
+16h00 : Magical Event -
+16h30 : Summer Event -
+16h30 : Chill Hour (Dure 1h)  -
+17h00 : Halloween Event -
+17h30 : Admin Machine -
+18h00 : Gothic Event -
+19h00 : Tokyo Event  -
+19h30 : Jungle Event -
+20h00 : Heaven Event -
+20h30 : Rave Event - 
+21h00 : Halloween Event  -
+22h00 : Void Event -
+22h30 - Heaven Event -
+22h30 - Chill Hour -
+23h30 : Admin Machine
 ]
 
 
