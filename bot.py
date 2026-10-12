@@ -1,3 +1,4 @@
+
 import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -23,80 +24,72 @@ PARIS = ZoneInfo("Europe/Paris")
 
 DUREE_EVENT = 20
 DUREE_CHILL = 60
+AVANCE_ANNONCE = 10
+JOURS_CALCUL = 4
 
 
 # =========================================================
-# HORAIRES DES EVENTS
+# HORAIRES QUOTIDIENS DES EVENTS
 # =========================================================
 
 HORAIRES_EVENTS = [
-    ("GOTHIC", "02:00", DUREE_EVENT),
-    ("SUMMER", "02:00", DUREE_EVENT),
-    ("GOTHIC", "02:30", DUREE_EVENT),
-    ("RAVE", "03:30", DUREE_EVENT),
-    ("JUNGLE", "04:00", DUREE_EVENT),
-    ("TOKYO", "05:00", DUREE_EVENT),
-    ("UNDERWATER", "05:30", DUREE_EVENT),
-    ("CHILL HOUR", "05:30", DUREE_CHILL),
-
-    01h00 : Gothic Event - 
-01h00 : Underwater Event -
-02h00 :  Void Event -
-02h30 : Rave Event -
-03h00 :  Halloween Event - 
-4h00 : Magical Event  -
-04h30 : Summer Event  -
-04h30 : Chill Hour (Dure 1h) -  
-05h30 : Admin Machine -
-06h00 : Gothic Event 
-07h00 : Void Event 
-08h30 : Rave Event 
-09h00 :  Halloween Event -
-10h00 : Tokyo Event 
-10h30 :  Underwater Event 
-10h30 : Chill Hour (Dure 1h) 
-13h30 : Jungle Event
-15h00 : Halloween Event 
-16h00 : Magical Event -
-16h30 : Summer Event -
-16h30 : Chill Hour (Dure 1h)  -
-17h00 : Halloween Event -
-17h30 : Admin Machine -
-18h00 : Gothic Event -
-19h00 : Tokyo Event  -
-19h30 : Jungle Event -
-20h00 : Heaven Event -
-20h30 : Rave Event - 
-21h00 : Halloween Event  -
-22h00 : Void Event -
-22h30 - Heaven Event -
-22h30 - Chill Hour -
-23h30 : Admin Machine
+    ("GOTHIC", "01:00", DUREE_EVENT),
+    ("UNDERWATER", "01:00", DUREE_EVENT),
+    ("VOID", "02:00", DUREE_EVENT),
+    ("RAVE", "02:30", DUREE_EVENT),
+    ("HALLOWEEN", "03:00", DUREE_EVENT),
+    ("MAGICAL", "04:00", DUREE_EVENT),
+    ("SUMMER", "04:30", DUREE_EVENT),
+    ("CHILL HOUR", "04:30", DUREE_CHILL),
+    ("ADMIN MACHINE", "05:30", DUREE_EVENT),
+    ("GOTHIC", "06:00", DUREE_EVENT),
+    ("VOID", "07:00", DUREE_EVENT),
+    ("RAVE", "08:30", DUREE_EVENT),
+    ("HALLOWEEN", "09:00", DUREE_EVENT),
+    ("TOKYO", "10:00", DUREE_EVENT),
+    ("UNDERWATER", "10:30", DUREE_EVENT),
+    ("CHILL HOUR", "10:30", DUREE_CHILL),
+    ("JUNGLE", "13:30", DUREE_EVENT),
+    ("HALLOWEEN", "15:00", DUREE_EVENT),
+    ("MAGICAL", "16:00", DUREE_EVENT),
+    ("SUMMER", "16:30", DUREE_EVENT),
+    ("CHILL HOUR", "16:30", DUREE_CHILL),
+    ("HALLOWEEN", "17:00", DUREE_EVENT),
+    ("ADMIN MACHINE", "17:30", DUREE_EVENT),
+    ("GOTHIC", "18:00", DUREE_EVENT),
+    ("TOKYO", "19:00", DUREE_EVENT),
+    ("JUNGLE", "19:30", DUREE_EVENT),
+    ("HEAVEN", "20:00", DUREE_EVENT),
+    ("RAVE", "20:30", DUREE_EVENT),
+    ("HALLOWEEN", "21:00", DUREE_EVENT),
+    ("VOID", "22:00", DUREE_EVENT),
+    ("HEAVEN", "22:30", DUREE_EVENT),
+    ("CHILL HOUR", "22:30", DUREE_CHILL),
+    ("ADMIN MACHINE", "23:30", DUREE_EVENT),
 ]
 
 
 # =========================================================
-# DISCORD
+# INITIALISATION DISCORD
 # =========================================================
 
 intents = discord.Intents.default()
 
 bot = discord.Client(intents=intents)
 
-paire_actuelle = None
-deja_envoye_au_demarrage = False
+salon_events = None
+demarrage_effectue = False
+
+# Identifiants des créneaux déjà annoncés
+horaires_annonces = set()
 
 
 # =========================================================
-# CRÉER UNE DATE
+# CRÉER UNE DATE EN HEURE DE PARIS
 # =========================================================
 
 def creer_datetime(date_base, heure):
-
-    heures, minutes = map(
-        int,
-        heure.split(":")
-    )
+    heures, minutes = map(int, heure.split(":"))
 
     return datetime(
         date_base.year,
@@ -109,17 +102,14 @@ def creer_datetime(date_base, heure):
 
 
 # =========================================================
-# OBTENIR TOUS LES EVENTS
+# OBTENIR LES OCCURRENCES DES EVENTS
 # =========================================================
 
 def obtenir_occurrences():
-
     maintenant = datetime.now(PARIS)
-
     occurrences = []
 
-    for jour_offset in range(4):
-
+    for jour_offset in range(JOURS_CALCUL):
         date_base = (
             maintenant.date()
             + timedelta(days=jour_offset)
@@ -128,20 +118,8 @@ def obtenir_occurrences():
         for index, (nom, heure, duree) in enumerate(
             HORAIRES_EVENTS
         ):
-
-            debut = creer_datetime(
-                date_base,
-                heure
-            )
-
-            # 00:30 appartient au jour suivant
-            if heure == "00:30":
-                debut += timedelta(days=1)
-
-            # Calcul automatique de la fin
-            fin = debut + timedelta(
-                minutes=duree
-            )
+            debut = creer_datetime(date_base, heure)
+            fin = debut + timedelta(minutes=duree)
 
             occurrences.append({
                 "nom": nom,
@@ -162,41 +140,64 @@ def obtenir_occurrences():
 
 
 # =========================================================
+# IDENTIFIANT UNIQUE D'UN EVENT
+# =========================================================
+
+def cle_event(event):
+    return (
+        event["debut"].date().isoformat(),
+        event["debut"].strftime("%H:%M"),
+        event["index"]
+    )
+
+
+# =========================================================
 # TROUVER L'EVENT EN COURS
 # =========================================================
 
-def obtenir_event_en_cours(
-    occurrences,
-    maintenant
-):
-
+def obtenir_event_en_cours(occurrences, maintenant):
     actifs = [
         event
         for event in occurrences
-        if (
-            event["debut"] <= maintenant
-            < event["fin"]
-        )
+        if event["debut"] <= maintenant < event["fin"]
     ]
 
     if not actifs:
         return None
 
     actifs.sort(
-        key=lambda event: event["debut"]
+        key=lambda event: (
+            event["debut"],
+            event["index"]
+        )
     )
 
     return actifs[0]
 
 
 # =========================================================
-# TROUVER LES 2 PROCHAINS EVENTS
+# TROUVER LES DEUX EVENTS À AFFICHER
 # =========================================================
 
-def obtenir_prochains_events(
-    occurrences,
-    maintenant
-):
+def obtenir_deux_events(occurrences, maintenant):
+    event_en_cours = obtenir_event_en_cours(
+        occurrences,
+        maintenant
+    )
+
+    if event_en_cours:
+        futurs = [
+            event
+            for event in occurrences
+            if event["debut"] > maintenant
+        ]
+
+        resultat = [event_en_cours]
+
+        if futurs:
+            resultat.append(futurs[0])
+
+        return resultat
 
     futurs = [
         event
@@ -208,14 +209,10 @@ def obtenir_prochains_events(
 
 
 # =========================================================
-# CRÉER L'EMBED
+# CRÉER UN EMBED DISCORD
 # =========================================================
 
-def creer_embed(
-    event,
-    maintenant
-):
-
+def creer_embed(event, maintenant):
     debut = event["debut"]
     fin = event["fin"]
 
@@ -223,185 +220,158 @@ def creer_embed(
     fin_ts = int(fin.timestamp())
 
     embed = discord.Embed(
-        title=(
-            f"<t:{debut_ts}:t>"
-            f" ➜ "
-            f"<t:{fin_ts}:t>"
-        ),
+        title=f"<t:{debut_ts}:t> ➜ <t:{fin_ts}:t>",
         color=discord.Color.red()
     )
 
-    embed.add_field(
-        name=event["nom"],
-        value=(
-            f"Length: "
-            f"{event['duree']}m 00s"
-        ),
-        inline=False
+    embed.description = (
+        f"**{event['nom']}**\n"
+        f"Length: {event['duree']}m 00s\n\n"
+        f"**Starts**\n"
+        f"<t:{debut_ts}:R>\n\n"
+        f"**Fin**\n"
+        f"<t:{fin_ts}:R>"
     )
 
-    # EVENT EN COURS
     if debut <= maintenant < fin:
-
-        embed.add_field(
-            name="🔴 LIVE",
-            value="L'event est en cours !",
-            inline=False
-        )
-
-        embed.add_field(
-            name="Fin",
-            value=f"<t:{fin_ts}:R>",
-            inline=False
-        )
-
-    # EVENT À VENIR
-    else:
-
-        embed.add_field(
-            name="Starts",
-            value=f"<t:{debut_ts}:R>",
-            inline=False
-        )
-
-        embed.add_field(
-            name="Fin",
-            value=f"<t:{fin_ts}:R>",
-            inline=False
-        )
+        embed.description += "\n\n**🔴 LIVE now**"
 
     return embed
 
 
 # =========================================================
-# ENVOYER LE MESSAGE
+# ENVOYER UN MESSAGE DISCORD
 # =========================================================
 
-async def envoyer_message(
-    events,
-    maintenant
-):
+async def envoyer_message(events, maintenant):
+    global salon_events
 
-    salon = bot.get_channel(
-        EVENT_SALON_ID
-    )
+    if not events:
+        return False
 
-    if salon is None:
-
-        print("❌ Salon introuvable.")
-
-        return
+    if salon_events is None:
+        try:
+            salon_events = await bot.fetch_channel(
+                EVENT_SALON_ID
+            )
+        except discord.HTTPException as erreur:
+            print(f"❌ Salon introuvable : {erreur}")
+            return False
 
     embeds = [
-        creer_embed(
-            event,
-            maintenant
-        )
+        creer_embed(event, maintenant)
         for event in events
     ]
 
-    message = (
+    contenu = (
         f"<@&{EVENT_PING_ROLE_ID}>\n\n"
         f"🔥 **STEAL THE BRAINROT**\n\n"
         f"Voici les prochains events :"
     )
 
-    await salon.send(
-        content=message,
-        embeds=embeds,
-        allowed_mentions=discord.AllowedMentions(
-            roles=True
+    try:
+        await salon_events.send(
+            content=contenu,
+            embeds=embeds,
+            allowed_mentions=discord.AllowedMentions(
+                roles=True
+            )
         )
-    )
 
-    print(
-        "📢 Message envoyé : "
-        + ", ".join(
-            event["nom"]
-            for event in events
+        print(
+            "📢 Message envoyé : "
+            + " / ".join(
+                event["nom"] for event in events
+            )
         )
-    )
+
+        return True
+
+    except discord.Forbidden:
+        print(
+            "❌ Permissions insuffisantes dans le salon. "
+            "Vérifie les permissions du bot."
+        )
+        return False
+
+    except discord.HTTPException as erreur:
+        print(f"❌ Erreur Discord : {erreur}")
+        return False
 
 
 # =========================================================
-# BOUCLE AUTOMATIQUE
+# BOUCLE AUTOMATIQUE DES ANNONCES
 # =========================================================
 
 @tasks.loop(seconds=5)
 async def verifier_events():
-
-    global paire_actuelle
-
     maintenant = datetime.now(PARIS)
-
     occurrences = obtenir_occurrences()
 
-    # PREMIER LANCEMENT
-    if paire_actuelle is None:
+    # Nettoyer les anciens créneaux
+    limite = maintenant.date() - timedelta(days=2)
 
-        event_en_cours = obtenir_event_en_cours(
-            occurrences,
-            maintenant
+    anciennes_cles = {
+        cle
+        for cle in horaires_annonces
+        if cle[0] < limite.isoformat()
+    }
+
+    horaires_annonces.difference_update(anciennes_cles)
+
+    # Regrouper les events qui commencent à la même heure
+    groupes = {}
+
+    for event in occurrences:
+        cle = cle_event(event)
+        groupes.setdefault(cle[:2], []).append(event)
+
+    for cle_horaire, events_meme_horaire in groupes.items():
+        debut = events_meme_horaire[0]["debut"]
+
+        moment_annonce = debut - timedelta(
+            minutes=AVANCE_ANNONCE
         )
 
-        if event_en_cours:
+        cles = [
+            cle_event(event)
+            for event in events_meme_horaire
+        ]
+
+        if all(cle in horaires_annonces for cle in cles):
+            continue
+
+        if moment_annonce <= maintenant < debut:
+            affiches = list(events_meme_horaire)
 
             futurs = [
                 event
                 for event in occurrences
-                if event["debut"] > maintenant
+                if event["debut"] > debut
             ]
 
-            paire_actuelle = [
-                event_en_cours
-            ]
+            for event in futurs:
+                if len(affiches) >= 2:
+                    break
 
-            if futurs:
-                paire_actuelle.append(
-                    futurs[0]
-                )
+                affiches.append(event)
 
-        else:
-
-            paire_actuelle = (
-                obtenir_prochains_events(
-                    occurrences,
-                    maintenant
-                )
+            succes = await envoyer_message(
+                affiches[:2],
+                maintenant
             )
 
-        return
+            if succes:
+                horaires_annonces.update(cles)
 
-    # ATTENDRE LA FIN DES 2 EVENTS
-    if len(paire_actuelle) < 2:
-        return
 
-    fin_des_events = max(
-        event["fin"]
-        for event in paire_actuelle
-    )
+# =========================================================
+# GESTION DES ERREURS
+# =========================================================
 
-    if maintenant < fin_des_events:
-        return
-
-    # TROUVER LES 2 SUIVANTS
-    prochains = [
-        event
-        for event in occurrences
-        if event["debut"] >= fin_des_events
-    ]
-
-    prochains = prochains[:2]
-
-    if len(prochains) < 2:
-        return
-
-    paire_actuelle = prochains
-
-    await envoyer_message(
-        paire_actuelle,
-        maintenant
-    )
+@verifier_events.error
+async def verifier_events_error(erreur):
+    print(f"❌ Erreur de la boucle : {erreur}")
 
 
 # =========================================================
@@ -410,114 +380,69 @@ async def verifier_events():
 
 @bot.event
 async def on_ready():
+    global salon_events
+    global demarrage_effectue
 
-    global paire_actuelle
-    global deja_envoye_au_demarrage
+    print(f"🤖 Bot connecté : {bot.user}")
+    print(f"🏠 Serveur : {GUILD_ID}")
+    print(f"📢 Salon : {EVENT_SALON_ID}")
+    print(f"🔔 Event Ping : {EVENT_PING_ROLE_ID}")
+    print("🕐 Fuseau : Europe/Paris")
+    print(f"⏱️ Events : {DUREE_EVENT} minutes")
+    print(f"🧊 Chill Hour : {DUREE_CHILL} minutes")
+    print(f"📣 Annonces : {AVANCE_ANNONCE} minutes avant")
 
-    print(
-        f"🤖 Bot connecté : {bot.user}"
-    )
-
-    print(
-        f"📢 Salon : {EVENT_SALON_ID}"
-    )
-
-    print(
-        f"🔔 Event Ping : {EVENT_PING_ROLE_ID}"
-    )
-
-    print(
-        "🕐 Fuseau : Europe/Paris"
-    )
-
-    print(
-        "⏱️ Events normaux : 20 minutes"
-    )
-
-    print(
-        "🧊 Chill Hour : 60 minutes"
-    )
-
-    print(
-        "⏰ Timestamps Discord activés"
-    )
-
-    # ENVOYER LES 2 EVENTS AU DÉMARRAGE
-    if not deja_envoye_au_demarrage:
-
-        maintenant = datetime.now(PARIS)
-
-        occurrences = obtenir_occurrences()
-
-        event_en_cours = obtenir_event_en_cours(
-            occurrences,
-            maintenant
-        )
-
-        if event_en_cours:
-
-            futurs = [
-                event
-                for event in occurrences
-                if event["debut"] > maintenant
-            ]
-
-            events_demarrage = [
-                event_en_cours
-            ]
-
-            if futurs:
-                events_demarrage.append(
-                    futurs[0]
-                )
-
-        else:
-
-            events_demarrage = (
-                obtenir_prochains_events(
-                    occurrences,
-                    maintenant
-                )
+    if not demarrage_effectue:
+        try:
+            salon_events = await bot.fetch_channel(
+                EVENT_SALON_ID
             )
 
-        if len(events_demarrage) == 2:
+            maintenant = datetime.now(PARIS)
+            occurrences = obtenir_occurrences()
 
-            paire_actuelle = events_demarrage
+            # Envoyer un message à chaque démarrage
+            # du processus, même si aucun event n'est en cours.
+            events_demarrage = obtenir_deux_events(
+                occurrences,
+                maintenant
+            )
 
-            await envoyer_message(
+            succes = await envoyer_message(
                 events_demarrage,
                 maintenant
             )
 
-            deja_envoye_au_demarrage = True
+            if succes:
+                print(
+                    "✅ Message de mise à jour envoyé."
+                )
 
-            print(
-                "✅ Vérification envoyée au démarrage."
-            )
+                # Éviter une seconde annonce immédiate
+                # pour les events déjà affichés.
+                for event in events_demarrage:
+                    horaires_annonces.add(
+                        cle_event(event)
+                    )
 
-    # LANCER LA BOUCLE
+            demarrage_effectue = True
+
+        except discord.HTTPException as erreur:
+            print(f"❌ Erreur au démarrage : {erreur}")
+
     if not verifier_events.is_running():
-
         verifier_events.start()
-
-        print(
-            "✅ Système Events activé !"
-        )
+        print("✅ Système automatique activé !")
 
 
 # =========================================================
-# LANCEMENT
+# LANCEMENT DU BOT
 # =========================================================
 
 if not TOKEN:
-
     raise ValueError(
-        "❌ DISCORD_TOKEN est introuvable "
-        "dans les variables Railway."
+        "DISCORD_TOKEN est introuvable. "
+        "Vérifie les variables d'environnement Railway."
     )
 
-
-bot.run(
-    TOKEN,
-    reconnect=True
-)
+bot.run(TOKEN, reconnect=True)
