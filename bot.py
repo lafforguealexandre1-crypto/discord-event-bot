@@ -30,42 +30,43 @@ JOURS_CALCUL = 4
 
 # =========================================================
 # HORAIRES QUOTIDIENS DES EVENTS
+# Tous les horaires sont avancés d'une heure.
 # =========================================================
 
 HORAIRES_EVENTS = [
-    ("GOTHIC", "01:00", DUREE_EVENT),
-    ("UNDERWATER", "01:00", DUREE_EVENT),
-    ("VOID", "02:00", DUREE_EVENT),
-    ("RAVE", "02:30", DUREE_EVENT),
-    ("HALLOWEEN", "03:00", DUREE_EVENT),
-    ("MAGICAL", "04:00", DUREE_EVENT),
-    ("SUMMER", "04:30", DUREE_EVENT),
-    ("CHILL HOUR", "04:30", DUREE_CHILL),
-    ("ADMIN MACHINE", "05:30", DUREE_EVENT),
-    ("GOTHIC", "06:00", DUREE_EVENT),
-    ("VOID", "07:00", DUREE_EVENT),
-    ("RAVE", "08:30", DUREE_EVENT),
-    ("HALLOWEEN", "09:00", DUREE_EVENT),
-    ("TOKYO", "10:00", DUREE_EVENT),
-    ("UNDERWATER", "10:30", DUREE_EVENT),
-    ("CHILL HOUR", "10:30", DUREE_CHILL),
-    ("JUNGLE", "13:30", DUREE_EVENT),
-    ("HALLOWEEN", "15:00", DUREE_EVENT),
-    ("MAGICAL", "16:00", DUREE_EVENT),
-    ("SUMMER", "16:30", DUREE_EVENT),
-    ("CHILL HOUR", "16:30", DUREE_CHILL),
-    ("HALLOWEEN", "17:00", DUREE_EVENT),
-    ("ADMIN MACHINE", "17:30", DUREE_EVENT),
-    ("GOTHIC", "18:00", DUREE_EVENT),
-    ("TOKYO", "19:00", DUREE_EVENT),
-    ("JUNGLE", "19:30", DUREE_EVENT),
-    ("HEAVEN", "20:00", DUREE_EVENT),
-    ("RAVE", "20:30", DUREE_EVENT),
-    ("HALLOWEEN", "21:00", DUREE_EVENT),
-    ("VOID", "22:00", DUREE_EVENT),
-    ("HEAVEN", "22:30", DUREE_EVENT),
-    ("CHILL HOUR", "22:30", DUREE_CHILL),
-    ("ADMIN MACHINE", "23:30", DUREE_EVENT),
+    ("GOTHIC", "02:00", DUREE_EVENT),
+    ("UNDERWATER", "02:00", DUREE_EVENT),
+    ("VOID", "03:00", DUREE_EVENT),
+    ("RAVE", "03:30", DUREE_EVENT),
+    ("HALLOWEEN", "04:00", DUREE_EVENT),
+    ("MAGICAL", "05:00", DUREE_EVENT),
+    ("SUMMER", "05:30", DUREE_EVENT),
+    ("CHILL HOUR", "05:30", DUREE_CHILL),
+    ("ADMIN MACHINE", "06:30", DUREE_EVENT),
+    ("GOTHIC", "07:00", DUREE_EVENT),
+    ("VOID", "08:00", DUREE_EVENT),
+    ("RAVE", "09:30", DUREE_EVENT),
+    ("HALLOWEEN", "10:00", DUREE_EVENT),
+    ("TOKYO", "11:00", DUREE_EVENT),
+    ("UNDERWATER", "11:30", DUREE_EVENT),
+    ("CHILL HOUR", "11:30", DUREE_CHILL),
+    ("JUNGLE", "14:30", DUREE_EVENT),
+    ("HALLOWEEN", "16:00", DUREE_EVENT),
+    ("MAGICAL", "17:00", DUREE_EVENT),
+    ("SUMMER", "17:30", DUREE_EVENT),
+    ("CHILL HOUR", "17:30", DUREE_CHILL),
+    ("HALLOWEEN", "18:00", DUREE_EVENT),
+    ("ADMIN MACHINE", "18:30", DUREE_EVENT),
+    ("GOTHIC", "19:00", DUREE_EVENT),
+    ("TOKYO", "20:00", DUREE_EVENT),
+    ("JUNGLE", "20:30", DUREE_EVENT),
+    ("HEAVEN", "21:00", DUREE_EVENT),
+    ("RAVE", "21:30", DUREE_EVENT),
+    ("HALLOWEEN", "22:00", DUREE_EVENT),
+    ("VOID", "23:00", DUREE_EVENT),
+    ("HEAVEN", "23:30", DUREE_EVENT),
+    ("CHILL HOUR", "23:30", DUREE_CHILL),
+    ("ADMIN MACHINE", "00:30", DUREE_EVENT),
 ]
 
 
@@ -120,6 +121,12 @@ def obtenir_occurrences():
         ):
             debut = creer_datetime(date_base, heure)
             fin = debut + timedelta(minutes=duree)
+
+            # ADMIN MACHINE à 00:30 appartient au jour
+            # suivant par rapport au planning précédent.
+            if heure == "00:30":
+                debut += timedelta(days=1)
+                fin += timedelta(days=1)
 
             occurrences.append({
                 "nom": nom,
