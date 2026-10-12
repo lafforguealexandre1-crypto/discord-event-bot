@@ -30,7 +30,7 @@ JOURS_CALCUL = 4
 
 # =========================================================
 # HORAIRES QUOTIDIENS DES EVENTS
-# Tous les horaires sont avancés d'une heure.
+# Tous les événements sont avancés d'une heure.
 # =========================================================
 
 HORAIRES_EVENTS = [
@@ -75,13 +75,10 @@ HORAIRES_EVENTS = [
 # =========================================================
 
 intents = discord.Intents.default()
-
 bot = discord.Client(intents=intents)
 
 salon_events = None
 demarrage_effectue = False
-
-# Identifiants des créneaux déjà annoncés
 horaires_annonces = set()
 
 
@@ -120,13 +117,13 @@ def obtenir_occurrences():
             HORAIRES_EVENTS
         ):
             debut = creer_datetime(date_base, heure)
-            fin = debut + timedelta(minutes=duree)
 
-            # ADMIN MACHINE à 00:30 appartient au jour
-            # suivant par rapport au planning précédent.
+            # L'événement de 00:30 correspond au lendemain
+            # du dernier événement de la journée précédente.
             if heure == "00:30":
                 debut += timedelta(days=1)
-                fin += timedelta(days=1)
+
+            fin = debut + timedelta(minutes=duree)
 
             occurrences.append({
                 "nom": nom,
@@ -192,25 +189,19 @@ def obtenir_deux_events(occurrences, maintenant):
         maintenant
     )
 
-    if event_en_cours:
-        futurs = [
-            event
-            for event in occurrences
-            if event["debut"] > maintenant
-        ]
+    futurs = [
+        event
+        for event in occurrences
+        if event["debut"] > maintenant
+    ]
 
+    if event_en_cours:
         resultat = [event_en_cours]
 
         if futurs:
             resultat.append(futurs[0])
 
         return resultat
-
-    futurs = [
-        event
-        for event in occurrences
-        if event["debut"] > maintenant
-    ]
 
     return futurs[:2]
 
@@ -254,6 +245,7 @@ async def envoyer_message(events, maintenant):
     global salon_events
 
     if not events:
+        print("❌ Aucun événement à afficher.")
         return False
 
     if salon_events is None:
@@ -286,7 +278,7 @@ async def envoyer_message(events, maintenant):
         )
 
         print(
-            "📢 Message envoyé : "
+            "✅ Message envoyé : "
             + " / ".join(
                 event["nom"] for event in events
             )
@@ -297,7 +289,7 @@ async def envoyer_message(events, maintenant):
     except discord.Forbidden:
         print(
             "❌ Permissions insuffisantes dans le salon. "
-            "Vérifie les permissions du bot."
+            "Vérifie que le bot peut voir le salon et envoyer des messages."
         )
         return False
 
@@ -326,7 +318,7 @@ async def verifier_events():
 
     horaires_annonces.difference_update(anciennes_cles)
 
-    # Regrouper les events qui commencent à la même heure
+    # Regrouper les événements qui commencent à la même heure
     groupes = {}
 
     for event in occurrences:
@@ -408,8 +400,7 @@ async def on_ready():
             maintenant = datetime.now(PARIS)
             occurrences = obtenir_occurrences()
 
-            # Envoyer un message à chaque démarrage
-            # du processus, même si aucun event n'est en cours.
+            # Envoyer immédiatement les deux prochains événements
             events_demarrage = obtenir_deux_events(
                 occurrences,
                 maintenant
@@ -421,16 +412,17 @@ async def on_ready():
             )
 
             if succes:
-                print(
-                    "✅ Message de mise à jour envoyé."
-                )
+                print("✅ Message de démarrage envoyé !")
 
-                # Éviter une seconde annonce immédiate
-                # pour les events déjà affichés.
+                # Éviter de répéter immédiatement les mêmes créneaux
                 for event in events_demarrage:
                     horaires_annonces.add(
                         cle_event(event)
                     )
+            else:
+                print(
+                    "❌ Le message de démarrage n'a pas pu être envoyé."
+                )
 
             demarrage_effectue = True
 
