@@ -86,6 +86,7 @@ intents = discord.Intents.default()
 bot = discord.Client(intents=intents)
 salon_events = None
 horaires_annonces = set()
+message_demarrage_envoye = False
 
 
 def creer_datetime(date_base, heure):
@@ -228,7 +229,7 @@ async def verifier_events_error(erreur):
 
 @bot.event
 async def on_ready():
-    global salon_events
+    global salon_events, message_demarrage_envoye
     print(f"🤖 Bot connecté : {bot.user}")
     print(f"🏠 Serveur configuré : {GUILD_ID}")
     print(f"📢 Salon des annonces : {EVENT_SALON_ID}")
@@ -241,9 +242,27 @@ async def on_ready():
         salon_events = await bot.fetch_channel(EVENT_SALON_ID)
     except discord.HTTPException as erreur:
         print(f"❌ Impossible de récupérer le salon : {erreur}")
+        salon_events = None
 
-    # IMPORTANT : aucun message n'est envoyé au démarrage.
-    # Le bot attend l'heure prévue du prochain événement.
+    # Envoie un seul message de confirmation à chaque démarrage du processus.
+    # Si Discord reconnecte simplement le bot, ne renvoie pas ce message.
+    if salon_events is not None and not message_demarrage_envoye:
+        try:
+            await salon_events.send(
+                "✅ **Mise à jour du bot effectuée !**\n"
+                "🤖 Le bot a démarré correctement et les annonces sont activées.\n"
+                "⏰ Les événements seront annoncés à leur heure prévue.",
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+            message_demarrage_envoye = True
+            print("✅ Message de démarrage envoyé.")
+        except discord.Forbidden:
+            print("❌ Le bot n'a pas la permission d'envoyer le message de démarrage.")
+        except discord.HTTPException as erreur:
+            print(f"❌ Échec du message de démarrage : {erreur}")
+
+    # Aucun événement futur n'est annoncé au démarrage.
+    # La boucle attend l'heure prévue du prochain événement.
     if not verifier_events.is_running():
         verifier_events.start()
         print("✅ Système automatique activé !")
