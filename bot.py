@@ -44,7 +44,7 @@ JOURS_CALCUL = 4
 # =========================================================
 
 HORAIRES_EVENTS = [
-    ("GOTHIC", "02:00", DUREE_EVENT),
+    ("GOTHIC", "01:00", DUREE_EVENT),
     ("UNDERWATER", "02:00", DUREE_EVENT),
     ("VOID", "03:00", DUREE_EVENT),
     ("RAVE", "03:30", DUREE_EVENT),
