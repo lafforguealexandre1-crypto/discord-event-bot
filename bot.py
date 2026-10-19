@@ -235,7 +235,7 @@ async def on_ready():
     print(f"📢 Salon des annonces : {EVENT_SALON_ID}")
     print("🔔 Mentions de rôles spécifiques par événement activées")
     print("🕐 Fuseau horaire : Europe/Paris")
-    print("📣 Annonces uniquement à l'heure de début")
+    print("📣 Annonces automatiques à l'heure prévue")
     print("📩 Un seul message par horaire; événements simultanés regroupés")
 
     try:
@@ -244,25 +244,50 @@ async def on_ready():
         print(f"❌ Impossible de récupérer le salon : {erreur}")
         salon_events = None
 
-    # Envoie un seul message de confirmation à chaque démarrage du processus.
-    # Si Discord reconnecte simplement le bot, ne renvoie pas ce message.
+    # À chaque vrai démarrage/redémarrage, affiche l'événement en cours,
+    # ou le prochain créneau si aucun événement n'est actuellement en cours.
     if salon_events is not None and not message_demarrage_envoye:
-        try:
-            await salon_events.send(
-                "✅ **Mise à jour du bot effectuée !**\n"
-                "🤖 Le bot a démarré correctement et les annonces sont activées.\n"
-                "⏰ Les événements seront annoncés à leur heure prévue.",
-                allowed_mentions=discord.AllowedMentions.none(),
-            )
-            message_demarrage_envoye = True
-            print("✅ Message de démarrage envoyé.")
-        except discord.Forbidden:
-            print("❌ Le bot n'a pas la permission d'envoyer le message de démarrage.")
-        except discord.HTTPException as erreur:
-            print(f"❌ Échec du message de démarrage : {erreur}")
+        maintenant = datetime.now(PARIS)
+        occurrences = obtenir_occurrences()
+        groupes = {}
+        for event in occurrences:
+            groupes.setdefault(cle_creneau(event["debut"]), []).append(event)
 
-    # Aucun événement futur n'est annoncé au démarrage.
-    # La boucle attend l'heure prévue du prochain événement.
+        evenements_actuels = [
+            event for event in occurrences
+            if event["debut"] <= maintenant < event["fin"]
+        ]
+
+        if evenements_actuels:
+            # Si plusieurs événements du même créneau sont en cours,
+            # ils restent dans un seul message.
+            cle = cle_creneau(evenements_actuels[0]["debut"])
+            evenements_a_afficher = groupes[cle]
+            # Évite que la boucle renvoie immédiatement le même créneau.
+            horaires_annonces.add(cle)
+        else:
+            prochains_groupes = [
+                (cle, events)
+                for cle, events in groupes.items()
+                if events[0]["debut"] > maintenant
+            ]
+            prochains_groupes.sort(key=lambda item: item[1][0]["debut"])
+            evenements_a_afficher = (
+                prochains_groupes[0][1] if prochains_groupes else []
+            )
+
+        if evenements_a_afficher:
+            succes = await envoyer_message_evenements(
+                evenements_a_afficher, maintenant
+            )
+            if succes:
+                message_demarrage_envoye = True
+                print("✅ Message de l'événement actuel/prochain envoyé.")
+        else:
+            print("⚠️ Aucun événement trouvé pour le message de démarrage.")
+
+    # Après le message de démarrage, le bot continue de surveiller le planning.
+    # Les événements futurs seront annoncés à leur heure prévue.
     if not verifier_events.is_running():
         verifier_events.start()
         print("✅ Système automatique activé !")
